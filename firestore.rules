@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    match /articles/{document} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /categories/{document} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /reporters/{document} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /settings/{document} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /media/{document} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /comments/{document} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isAuthenticated();
+    }
+
+    match /ads/{document} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Analytics & Events: Public users can record background view/like events, but ONLY authenticated admins can read/list/manage analytics data
+    match /analytics_events/{document} {
+      allow create: if true;
+      allow read, list, update, delete: if isAuthenticated();
+    }
+
+    match /analytics/{document} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

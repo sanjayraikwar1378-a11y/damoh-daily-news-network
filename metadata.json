@@ -1,0 +1,8 @@
+{
+  "name": "Damoh Daily News Network",
+  "description": "A production-ready local Hindi news portal for Damoh District.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "articles": {
+      "title": "Articles",
+      "description": "News articles collection",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "content": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "author": { "type": "string" },
+        "publishedAt": { "type": "string" },
+        "views": { "type": "number" },
+        "trending": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "breaking": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["title", "category"]
+    },
+    "categories": {
+      "title": "Categories",
+      "description": "News categories",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["name", "slug"]
+    },
+    "reporters": {
+      "title": "Reporters",
+      "description": "News reporters",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "avatar": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Site and market settings",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" }
+      },
+      "required": ["type"]
+    },
+    "media": {
+      "title": "Media",
+      "description": "Uploaded Cloudinary media items",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "folder": { "type": "string" },
+        "uploadedAt": { "type": "string" }
+      },
+      "required": ["url"]
+    },
+    "analytics_events": {
+      "title": "Analytics Events",
+      "description": "Background engagement tracking for views and likes",
+      "type": "object",
+      "properties": {
+        "articleId": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "dateStr": { "type": "string" }
+      },
+      "required": ["articleId", "type", "timestamp", "dateStr"]
+    }
+  }
+}

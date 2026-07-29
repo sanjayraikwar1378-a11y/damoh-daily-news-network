@@ -1,0 +1,12 @@
+{
+  "projectId": "damoh-daily-news",
+  "appId": "1:548384927269:web:5f4fdb181d9218731599cc",
+  "apiKey": "AIzaSyAqqGLWs0rXdM_Cp2q2HPkDgToASXCCoCM",
+  "authDomain": "damoh-daily-news.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "damoh-daily-news.firebasestorage.app",
+  "messagingSenderId": "548384927269",
+  "measurementId": "",
+  "oAuthClientId": "548384927269-600f91bobh1rsb50jn2uqakb228m38mp.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
+}
