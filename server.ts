@@ -1,9 +1,8 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { createExpressApp } from "./src/server/app";
+import app from "./api/index";
 
-const app = createExpressApp();
 const PORT = 3000;
 
 let viteDevServer: any = null;
