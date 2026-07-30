@@ -5,50 +5,62 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin' ||
+        (request.auth.token.email != null && (
+          request.auth.token.email.matches('.*@damohdaily\\.com$') ||
+          request.auth.token.email.matches('.*@damohdailynews\\.com$') ||
+          request.auth.token.email == 'sanjayraikwar1378@gmail.com'
+        ))
+      );
+    }
+
     match /articles/{document} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     match /categories/{document} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     match /reporters/{document} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     match /settings/{document} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     match /media/{document} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     match /comments/{document} {
       allow read: if true;
       allow create: if true;
-      allow update, delete: if isAuthenticated();
+      allow update, delete: if isAdmin();
     }
 
     match /ads/{document} {
       allow read: if true;
-      allow write: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     // Analytics & Events: Public users can record background view/like events, but ONLY authenticated admins can read/list/manage analytics data
     match /analytics_events/{document} {
       allow create: if true;
-      allow read, list, update, delete: if isAuthenticated();
+      allow read, list, update, delete: if isAdmin();
     }
 
     match /analytics/{document} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAdmin();
     }
   }
 }

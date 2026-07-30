@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
 import { 
   Article, 
   Category, 
@@ -12,8 +12,6 @@ import {
   MOCK_ARTICLES, 
   CATEGORIES as INITIAL_CATEGORIES, 
   REPORTERS as INITIAL_REPORTERS, 
-  MOCK_COMMENTS, 
-  MOCK_MEDIA, 
   MOCK_ADS, 
   MOCK_SITE_SETTINGS,
   ArticleStatus
@@ -23,10 +21,11 @@ import {
   collection, 
   doc, 
   setDoc, 
-  addDoc, 
   deleteDoc, 
   onSnapshot, 
+  getDoc,
   getDocs,
+  addDoc,
   sanitizeFirestoreData 
 } from '@/lib/firebase';
 
@@ -96,155 +95,226 @@ interface NewsContextType {
   readingHistory: string[];
   addToHistory: (articleId: string) => void;
 
-  // Status
+  // Status & Optimization
   isSyncingFirestore: boolean;
+  firestoreSyncError: boolean;
+  retryFirestoreSync: () => void;
+  isAdminDataLoaded: boolean;
+  loadAdminData: () => void;
 }
 
 const NewsContext = createContext<NewsContextType | undefined>(undefined);
 
 export function NewsProvider({ children }: { children: ReactNode }) {
-  const [articles, setArticles] = useState<Article[]>(MOCK_ARTICLES);
-  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
-  const [reporters, setReporters] = useState<Reporter[]>(INITIAL_REPORTERS);
-  const [comments, setComments] = useState<Comment[]>(MOCK_COMMENTS);
-  const [media, setMedia] = useState<MediaItem[]>(MOCK_MEDIA);
+  // Production initial states are empty arrays to avoid showing old demo mock news on load
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [reporters, setReporters] = useState<Reporter[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [media, setMedia] = useState<MediaItem[]>([]);
   const [adSettings, setAdSettings] = useState<AdSettings>(MOCK_ADS);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(MOCK_SITE_SETTINGS);
   const [marketRates, setMarketRates] = useState<MarketRates>(INITIAL_MARKET_RATES);
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [readingHistory, setReadingHistory] = useState<string[]>([]);
   const [isSyncingFirestore, setIsSyncingFirestore] = useState<boolean>(true);
+  const [firestoreSyncError, setFirestoreSyncError] = useState<boolean>(false);
+  const [syncRetryCount, setSyncRetryCount] = useState<number>(0);
+  const [isAdminDataLoaded, setIsAdminDataLoaded] = useState<boolean>(false);
 
-  // Firestore Real-time Subscriptions and Migration
+  const retryFirestoreSync = useCallback(() => {
+    setIsSyncingFirestore(true);
+    setFirestoreSyncError(false);
+    setSyncRetryCount(prev => prev + 1);
+  }, []);
+
+  // Automatic recovery when internet connection returns
   useEffect(() => {
-    let unsubArticles: () => void = () => {};
-    let unsubCategories: () => void = () => {};
-    let unsubReporters: () => void = () => {};
-    let unsubComments: () => void = () => {};
-    let unsubMedia: () => void = () => {};
-    let unsubSettingsSite: () => void = () => {};
-    let unsubSettingsAds: () => void = () => {};
-    let unsubSettingsMarket: () => void = () => {};
+    const handleOnline = () => {
+      console.log("Network online detected: auto-retrying Firestore sync");
+      retryFirestoreSync();
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [retryFirestoreSync]);
 
-    const setupFirestoreSync = async () => {
-      try {
-        // 1. Articles Sync & Seeding
-        const articlesSnap = await getDocs(collection(db, "articles"));
-        if (articlesSnap.empty) {
-          // Seed initial articles if Firestore is empty
-          for (const item of MOCK_ARTICLES) {
-            await setDoc(doc(db, "articles", item.id), item);
-          }
-        }
-        unsubArticles = onSnapshot(collection(db, "articles"), (snap) => {
-          const list: Article[] = [];
-          snap.forEach((d) => list.push(d.data() as Article));
-          if (list.length > 0) {
-            // Sort by publishedAt desc
-            list.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-            setArticles(list);
-          }
-        });
+  // 1. Lightweight Public Real-time Subscriptions (Articles & Categories only)
+  useEffect(() => {
+    let unsubArticles = () => {};
+    let unsubCategories = () => {};
+    let isMounted = true;
 
-        // 2. Categories Sync & Seeding
-        const categoriesSnap = await getDocs(collection(db, "categories"));
-        if (categoriesSnap.empty) {
-          for (const item of INITIAL_CATEGORIES) {
-            await setDoc(doc(db, "categories", item.id), item);
-          }
-        }
-        unsubCategories = onSnapshot(collection(db, "categories"), (snap) => {
-          const list: Category[] = [];
-          snap.forEach((d) => list.push(d.data() as Category));
-          if (list.length > 0) setCategories(list);
-        });
+    let hasArticlesLoaded = false;
+    let hasCategoriesLoaded = false;
 
-        // 3. Reporters Sync & Seeding
-        const reportersSnap = await getDocs(collection(db, "reporters"));
-        if (reportersSnap.empty) {
-          for (const item of INITIAL_REPORTERS) {
-            await setDoc(doc(db, "reporters", item.id), item);
-          }
-        }
-        unsubReporters = onSnapshot(collection(db, "reporters"), (snap) => {
-          const list: Reporter[] = [];
-          snap.forEach((d) => list.push(d.data() as Reporter));
-          if (list.length > 0) setReporters(list);
-        });
+    setIsSyncingFirestore(true);
+    setFirestoreSyncError(false);
 
-        // 4. Comments Sync & Seeding
-        const commentsSnap = await getDocs(collection(db, "comments"));
-        if (commentsSnap.empty) {
-          for (const item of MOCK_COMMENTS) {
-            await setDoc(doc(db, "comments", item.id), item);
-          }
-        }
-        unsubComments = onSnapshot(collection(db, "comments"), (snap) => {
-          const list: Comment[] = [];
-          snap.forEach((d) => list.push(d.data() as Comment));
-          if (list.length > 0) {
-            list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-            setComments(list);
-          }
-        });
-
-        // 5. Media Sync
-        const mediaSnap = await getDocs(collection(db, "media"));
-        if (mediaSnap.empty) {
-          for (const item of MOCK_MEDIA) {
-            await setDoc(doc(db, "media", item.id), item);
-          }
-        }
-        unsubMedia = onSnapshot(collection(db, "media"), (snap) => {
-          const list: MediaItem[] = [];
-          snap.forEach((d) => list.push(d.data() as MediaItem));
-          if (list.length > 0) setMedia(list);
-        });
-
-        // 6. Settings Sync & Seeding
-        unsubSettingsSite = onSnapshot(doc(db, "settings", "site"), (snap) => {
-          if (snap.exists()) {
-            setSiteSettings(snap.data() as SiteSettings);
-          } else {
-            setDoc(doc(db, "settings", "site"), MOCK_SITE_SETTINGS);
-          }
-        });
-
-        unsubSettingsAds = onSnapshot(doc(db, "settings", "ads"), (snap) => {
-          if (snap.exists()) {
-            setAdSettings(snap.data() as AdSettings);
-          } else {
-            setDoc(doc(db, "settings", "ads"), MOCK_ADS);
-          }
-        });
-
-        unsubSettingsMarket = onSnapshot(doc(db, "settings", "market"), (snap) => {
-          if (snap.exists()) {
-            setMarketRates(snap.data() as MarketRates);
-          } else {
-            setDoc(doc(db, "settings", "market"), INITIAL_MARKET_RATES);
-          }
-        });
-
-      } catch (err) {
-        console.warn("Firestore initialization notice (using fallback local cache if offline):", err);
-      } finally {
+    // Helper to evaluate if both initial snapshot reads have finished
+    const notifyIfInitialSyncDone = () => {
+      if (isMounted && hasArticlesLoaded && hasCategoriesLoaded) {
         setIsSyncingFirestore(false);
+        setFirestoreSyncError(false);
       }
     };
 
-    setupFirestoreSync();
+    // Emergency fallback timer: strictly 12 seconds in case network is disconnected or Firestore completely fails to respond
+    const emergencyTimer = setTimeout(() => {
+      if (isMounted) {
+        if (!hasArticlesLoaded || !hasCategoriesLoaded) {
+          console.warn("Firestore sync emergency fallback triggered after 12s");
+          setIsSyncingFirestore(false);
+          setFirestoreSyncError(true);
+        }
+      }
+    }, 12000);
+
+    // One-time fetch for site, ad, and market settings for public headers & banners
+    const fetchPublicSettingsOnce = async () => {
+      try {
+        const [siteSnap, adsSnap, marketSnap] = await Promise.allSettled([
+          getDoc(doc(db, "settings", "site")),
+          getDoc(doc(db, "settings", "ads")),
+          getDoc(doc(db, "settings", "market"))
+        ]);
+
+        if (siteSnap.status === 'fulfilled' && siteSnap.value.exists()) {
+          setSiteSettings(siteSnap.value.data() as SiteSettings);
+        }
+        if (adsSnap.status === 'fulfilled' && adsSnap.value.exists()) {
+          setAdSettings(adsSnap.value.data() as AdSettings);
+        }
+        if (marketSnap.status === 'fulfilled' && marketSnap.value.exists()) {
+          setMarketRates(marketSnap.value.data() as MarketRates);
+        }
+      } catch (err) {
+        console.warn("Public settings fetch notice:", err);
+      }
+    };
+
+    fetchPublicSettingsOnce();
+
+    try {
+      // 1. Articles Sync (Public Real-time)
+      unsubArticles = onSnapshot(collection(db, "articles"), (snap) => {
+        const list: Article[] = [];
+        snap.forEach((d) => list.push(d.data() as Article));
+        if (list.length > 0) {
+          list.sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime());
+          setArticles(list);
+        } else {
+          setArticles([]);
+        }
+        hasArticlesLoaded = true;
+        notifyIfInitialSyncDone();
+      }, (err) => {
+        console.warn("Articles listener notice:", err);
+        if (isMounted) {
+          hasArticlesLoaded = true;
+          setFirestoreSyncError(true);
+          setIsSyncingFirestore(false);
+        }
+      });
+
+      // 2. Categories Sync (Public Real-time)
+      unsubCategories = onSnapshot(collection(db, "categories"), (snap) => {
+        const list: Category[] = [];
+        snap.forEach((d) => list.push(d.data() as Category));
+        if (list.length > 0) {
+          setCategories(list);
+        } else {
+          setCategories([]);
+          if (snap.empty) {
+            INITIAL_CATEGORIES.forEach((item) => {
+              setDoc(doc(db, "categories", item.id), sanitizeFirestoreData(item)).catch(() => {});
+            });
+          }
+        }
+        hasCategoriesLoaded = true;
+        notifyIfInitialSyncDone();
+      }, (err) => {
+        console.warn("Categories listener notice:", err);
+        if (isMounted) {
+          hasCategoriesLoaded = true;
+          notifyIfInitialSyncDone();
+        }
+      });
+
+    } catch (err) {
+      console.warn("Public listeners warning:", err);
+      if (isMounted) {
+        setIsSyncingFirestore(false);
+        setFirestoreSyncError(true);
+      }
+    }
 
     // LocalStorage user bookmarks and history
-    const savedBookmarks = localStorage.getItem('damoh_news_bookmarks');
-    if (savedBookmarks) setBookmarks(JSON.parse(savedBookmarks));
+    try {
+      const savedBookmarks = localStorage.getItem('damoh_news_bookmarks');
+      if (savedBookmarks) setBookmarks(JSON.parse(savedBookmarks));
 
-    const savedHistory = localStorage.getItem('damoh_news_history');
-    if (savedHistory) setReadingHistory(JSON.parse(savedHistory));
+      const savedHistory = localStorage.getItem('damoh_news_history');
+      if (savedHistory) setReadingHistory(JSON.parse(savedHistory));
+    } catch {}
 
     return () => {
+      isMounted = false;
+      clearTimeout(emergencyTimer);
       unsubArticles();
       unsubCategories();
+    };
+  }, [syncRetryCount]);
+
+  // 2. Admin Subscriptions On-Demand (Reporters, Comments, Media, Live Settings)
+  const loadAdminData = useCallback(() => {
+    if (isAdminDataLoaded) return;
+    setIsAdminDataLoaded(true);
+
+    const unsubReporters = onSnapshot(collection(db, "reporters"), (snap) => {
+      const list: Reporter[] = [];
+      snap.forEach((d) => list.push(d.data() as Reporter));
+      if (list.length > 0) {
+        setReporters(list);
+      } else {
+        setReporters([]);
+        if (snap.empty) {
+          INITIAL_REPORTERS.forEach((item) => {
+            setDoc(doc(db, "reporters", item.id), sanitizeFirestoreData(item)).catch(() => {});
+          });
+        }
+      }
+    }, (err) => console.warn("Reporters listener notice:", err));
+
+    const unsubComments = onSnapshot(collection(db, "comments"), (snap) => {
+      const list: Comment[] = [];
+      snap.forEach((d) => list.push(d.data() as Comment));
+      if (list.length > 0) {
+        list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        setComments(list);
+      } else {
+        setComments([]);
+      }
+    }, (err) => console.warn("Comments listener notice:", err));
+
+    const unsubMedia = onSnapshot(collection(db, "media"), (snap) => {
+      const list: MediaItem[] = [];
+      snap.forEach((d) => list.push(d.data() as MediaItem));
+      setMedia(list.length > 0 ? list : []);
+    }, (err) => console.warn("Media listener notice:", err));
+
+    const unsubSettingsSite = onSnapshot(doc(db, "settings", "site"), (snap) => {
+      if (snap.exists()) setSiteSettings(snap.data() as SiteSettings);
+    }, (err) => console.warn("Site settings listener notice:", err));
+
+    const unsubSettingsAds = onSnapshot(doc(db, "settings", "ads"), (snap) => {
+      if (snap.exists()) setAdSettings(snap.data() as AdSettings);
+    }, (err) => console.warn("Ad settings listener notice:", err));
+
+    const unsubSettingsMarket = onSnapshot(doc(db, "settings", "market"), (snap) => {
+      if (snap.exists()) setMarketRates(snap.data() as MarketRates);
+    }, (err) => console.warn("Market rates listener notice:", err));
+
+    return () => {
       unsubReporters();
       unsubComments();
       unsubMedia();
@@ -252,15 +322,26 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       unsubSettingsAds();
       unsubSettingsMarket();
     };
-  }, []);
+  }, [isAdminDataLoaded]);
+
+  // Auto-load admin collections if URL starts with /admin
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
+      loadAdminData();
+    }
+  }, [loadAdminData]);
 
   // Save Bookmarks & History to LocalStorage
   useEffect(() => {
-    localStorage.setItem('damoh_news_bookmarks', JSON.stringify(bookmarks));
+    try {
+      localStorage.setItem('damoh_news_bookmarks', JSON.stringify(bookmarks));
+    } catch {}
   }, [bookmarks]);
 
   useEffect(() => {
-    localStorage.setItem('damoh_news_history', JSON.stringify(readingHistory));
+    try {
+      localStorage.setItem('damoh_news_history', JSON.stringify(readingHistory));
+    } catch {}
   }, [readingHistory]);
 
   // Article Actions
@@ -287,10 +368,9 @@ export function NewsProvider({ children }: { children: ReactNode }) {
 
     const docData = sanitizeFirestoreData(newArticle);
 
-    // Save to Firestore first so errors can be thrown & caught in UI
     await setDoc(doc(db, "articles", id), docData);
 
-    setArticles(prev => [newArticle, ...prev]);
+    setArticles(prev => [newArticle, ...prev.filter(a => a.id !== id)]);
     return newArticle;
   };
 
@@ -393,14 +473,12 @@ export function NewsProvider({ children }: { children: ReactNode }) {
           [todayStr]: (currentViewsByDate[todayStr] || 0) + 1 
         };
 
-        // Background update to Firestore article document
         setDoc(doc(db, "articles", id), { 
           views: newViews, 
           viewsByDate: updatedViewsByDate,
           lastViewedAt: nowIso 
         }, { merge: true }).catch(() => {});
 
-        // Background analytics event log in Firestore
         addDoc(collection(db, "analytics_events"), {
           articleId: id,
           type: 'view',
@@ -433,14 +511,12 @@ export function NewsProvider({ children }: { children: ReactNode }) {
           [todayStr]: (currentLikesByDate[todayStr] || 0) + 1 
         };
 
-        // Background update to Firestore article document
         setDoc(doc(db, "articles", id), { 
           likes: newLikes, 
           likesByDate: updatedLikesByDate,
           lastLikedAt: nowIso 
         }, { merge: true }).catch(() => {});
 
-        // Background analytics event log in Firestore
         addDoc(collection(db, "analytics_events"), {
           articleId: id,
           type: 'like',
@@ -595,7 +671,6 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     });
   };
 
-
   // User Feature Actions
   const toggleBookmark = (articleId: string) => {
     setBookmarks(prev => 
@@ -612,45 +687,67 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const contextValue = useMemo(() => ({
+    articles,
+    addArticle,
+ updateArticle,
+    deleteArticle,
+    duplicateArticle,
+    bulkUpdateStatus,
+    bulkDeleteArticles,
+    incrementViews,
+    toggleLike,
+    categories,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+    reorderCategories,
+    reporters,
+    addReporter,
+    updateReporter,
+    deleteReporter,
+    comments,
+    addComment,
+    updateCommentStatus,
+    deleteComment,
+    media,
+    addMedia,
+    deleteMedia,
+    adSettings,
+    updateAdSettings,
+    siteSettings,
+    updateSiteSettings,
+    marketRates,
+    updateMarketRates,
+    bookmarks,
+    toggleBookmark,
+    readingHistory,
+    addToHistory,
+    isSyncingFirestore,
+    firestoreSyncError,
+    retryFirestoreSync,
+    isAdminDataLoaded,
+    loadAdminData
+  }), [
+    articles,
+    categories,
+    reporters,
+    comments,
+    media,
+    adSettings,
+    siteSettings,
+    marketRates,
+    bookmarks,
+    readingHistory,
+    isSyncingFirestore,
+    firestoreSyncError,
+    retryFirestoreSync,
+    isAdminDataLoaded,
+    loadAdminData
+  ]);
+
   return (
-    <NewsContext.Provider value={{
-      articles,
-      addArticle,
-      updateArticle,
-      deleteArticle,
-      duplicateArticle,
-      bulkUpdateStatus,
-      bulkDeleteArticles,
-      incrementViews,
-      toggleLike,
-      categories,
-      addCategory,
-      updateCategory,
-      deleteCategory,
-      reorderCategories,
-      reporters,
-      addReporter,
-      updateReporter,
-      deleteReporter,
-      comments,
-      addComment,
-      updateCommentStatus,
-      deleteComment,
-      media,
-      addMedia,
-      deleteMedia,
-      adSettings,
-      updateAdSettings,
-      siteSettings,
-      updateSiteSettings,
-      marketRates,
-      updateMarketRates,
-      bookmarks,
-      toggleBookmark,
-      readingHistory,
-      addToHistory,
-      isSyncingFirestore
-    }}>
+    <NewsContext.Provider value={contextValue}>
       {children}
     </NewsContext.Provider>
   );

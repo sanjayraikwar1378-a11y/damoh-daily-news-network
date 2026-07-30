@@ -23,11 +23,15 @@ export function AdminReporters() {
   const [newEmail, setNewEmail] = useState("")
 
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isEditMode = false) => {
     const file = e.target.files?.[0]
     if (file) {
       setIsUploadingAvatar(true)
+      setUploadStatus("Uploading profile photo...")
+      setUploadError(null)
       try {
         const res = await uploadToCloudinary(file, 'reporters')
         if (isEditMode) {
@@ -35,8 +39,11 @@ export function AdminReporters() {
         } else {
           setNewAvatar(res.url)
         }
-      } catch (err) {
+        setUploadStatus("Photo uploaded successfully!")
+        setTimeout(() => setUploadStatus(null), 3000)
+      } catch (err: any) {
         console.error("Cloudinary reporter avatar upload failed:", err)
+        setUploadError("Failed to upload image. Please check file format or try again.")
       } finally {
         setIsUploadingAvatar(false)
       }
@@ -132,16 +139,36 @@ export function AdminReporters() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-zinc-500">Profile Photo URL</label>
-                  <Input 
-                    value={newAvatar}
-                    onChange={e => setNewAvatar(e.target.value)}
-                    placeholder="https://images.unsplash.com/..." 
-                  />
+                  <label className="text-xs font-semibold uppercase text-zinc-500">Profile Photo</label>
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={newAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop"} 
+                      alt="Avatar preview" 
+                      className="w-12 h-12 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 shrink-0" 
+                    />
+                    <div className="flex-1 space-y-1">
+                      <div className="flex gap-2">
+                        <Input 
+                          value={newAvatar}
+                          onChange={e => setNewAvatar(e.target.value)}
+                          placeholder="Image URL or upload file" 
+                          className="text-xs"
+                        />
+                        <label className="cursor-pointer inline-flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold rounded-md shrink-0 transition-colors">
+                          {isUploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                          <input type="file" accept="image/*" onChange={(e) => handleAvatarFileUpload(e, false)} className="hidden" />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bold">
-                  <Plus className="h-4 w-4 mr-2" /> Add Reporter
+                {uploadStatus && <p className="text-xs text-green-600 font-semibold">{uploadStatus}</p>}
+                {uploadError && <p className="text-xs text-red-600 font-semibold">{uploadError}</p>}
+
+                <Button type="submit" disabled={isUploadingAvatar} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold">
+                  {isUploadingAvatar ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />} 
+                  Add Reporter
                 </Button>
               </form>
             </CardContent>
@@ -169,10 +196,24 @@ export function AdminReporters() {
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <Input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="Email" />
-                          <Input value={editAvatar} onChange={e => setEditAvatar(e.target.value)} placeholder="Photo URL" />
+                          <div className="flex gap-2 items-center">
+                            <Input value={editAvatar} onChange={e => setEditAvatar(e.target.value)} placeholder="Photo URL" />
+                            <label className="cursor-pointer inline-flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold rounded-md shrink-0 transition-colors">
+                              {isUploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                              <input type="file" accept="image/*" onChange={(e) => handleAvatarFileUpload(e, true)} className="hidden" />
+                            </label>
+                          </div>
                         </div>
+                        {editAvatar && (
+                          <div className="flex items-center gap-2">
+                            <img src={editAvatar} alt="Edit preview" className="w-10 h-10 rounded-full object-cover border" />
+                            <span className="text-xs text-zinc-500">New photo selected</span>
+                          </div>
+                        )}
+                        {uploadStatus && <p className="text-xs text-green-600 font-semibold">{uploadStatus}</p>}
+                        {uploadError && <p className="text-xs text-red-600 font-semibold">{uploadError}</p>}
                         <div className="flex gap-2">
-                          <Button size="sm" onClick={() => handleUpdate(r.id)} className="bg-green-600 hover:bg-green-700">Save</Button>
+                          <Button size="sm" onClick={() => handleUpdate(r.id)} disabled={isUploadingAvatar} className="bg-green-600 hover:bg-green-700">Save</Button>
                           <Button size="sm" variant="ghost" onClick={() => setIsEditing(null)}>Cancel</Button>
                         </div>
                       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Search, Save, Globe, Code, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,8 +16,11 @@ export function AdminSEO() {
   })
   const [saved, setSaved] = useState(false)
 
+  const isLoadedRef = useRef(false)
+
   useEffect(() => {
-    if (siteSettings) {
+    if (siteSettings && !isLoadedRef.current) {
+      isLoadedRef.current = true
       setForm({
         siteName: siteSettings.siteName || '',
         tagline: siteSettings.tagline || '',

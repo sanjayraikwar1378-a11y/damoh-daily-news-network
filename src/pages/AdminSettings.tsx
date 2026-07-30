@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Save, CheckCircle, Globe, Phone, Mail, Share2, Shield, Coins, RefreshCw, AlertCircle, Upload, Loader2, Image as ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,15 +15,20 @@ export function AdminSettings() {
   const [saved, setSaved] = useState(false)
   const [isUploadingLogo, setIsUploadingLogo] = useState(false)
 
+  const isSettingsLoadedRef = useRef(false)
+  const isRatesLoadedRef = useRef(false)
+
   // Keep form in sync when siteSettings or marketRates arrive from Firestore
   useEffect(() => {
-    if (siteSettings) {
+    if (siteSettings && !isSettingsLoadedRef.current) {
+      isSettingsLoadedRef.current = true
       setForm(siteSettings)
     }
   }, [siteSettings])
 
   useEffect(() => {
-    if (marketRates) {
+    if (marketRates && !isRatesLoadedRef.current) {
+      isRatesLoadedRef.current = true
       setRatesForm(marketRates)
     }
   }, [marketRates])

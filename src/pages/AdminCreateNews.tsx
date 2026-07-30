@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { Upload, ImageIcon, Save, Eye, ArrowLeft, Calendar, Video, Trash2, CheckCircle2, AlertCircle, Youtube, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,11 +42,14 @@ export function AdminCreateNews() {
     keywords: "",
   })
 
-  // Load article data if editing
+  const loadedIdRef = useRef<string | null>(null)
+
+  // Load article data if editing (only once per article ID)
   useEffect(() => {
-    if (id) {
+    if (id && loadedIdRef.current !== id) {
       const existing = articles.find(a => a.id === id)
       if (existing) {
+        loadedIdRef.current = id
         setFormData({
           title: existing.title || "",
           slug: existing.slug || "",
@@ -68,7 +71,7 @@ export function AdminCreateNews() {
         })
       }
     }
-  }, [id, articles])
+  }, [id, articles, reporters])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement

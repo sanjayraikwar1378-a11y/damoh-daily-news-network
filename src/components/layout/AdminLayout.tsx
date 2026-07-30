@@ -25,9 +25,15 @@ import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "motion/react"
 import { auth, onAuthStateChanged, signOut, deleteUser, User } from "@/lib/firebase"
 import { AdminLogin } from "@/components/AdminLogin"
+import { useNews } from "@/context/NewsContext"
 
 export function AdminLayout() {
+  const { loadAdminData } = useNews()
   const location = useLocation()
+
+  useEffect(() => {
+    loadAdminData()
+  }, [loadAdminData])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [user, setUser] = useState<User | null | undefined>(undefined) // undefined = loading
   const [authError, setAuthError] = useState<string | null>(null)

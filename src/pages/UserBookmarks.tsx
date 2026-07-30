@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
+import { getOptimizedImageUrl } from "@/lib/cloudinary"
 import { formatDistanceToNow } from "date-fns"
+import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
 
 export function UserBookmarks() {
-  const { articles, bookmarks, toggleBookmark, readingHistory } = useNews()
+  const { articles, bookmarks, toggleBookmark, readingHistory, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
   const [activeTab, setActiveTab] = useState<'bookmarks' | 'history'>('bookmarks')
 
   const bookmarkedArticles = articles.filter(a => bookmarks.includes(a.id))
@@ -51,48 +53,66 @@ export function UserBookmarks() {
       </div>
 
       <div className="space-y-4">
-        {activeList.map(article => (
-          <Card key={article.id} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <div className="flex gap-4 items-start sm:items-center flex-1">
-                <img src={article.imageUrl || undefined} alt={article.title} className="w-24 h-16 rounded object-cover flex-shrink-0 bg-zinc-100" />
-                <div className="space-y-1">
-                  <Link to={`/article/${article.slug}`} className="font-bold text-base text-zinc-900 dark:text-white hover:text-red-600 line-clamp-2 transition-colors">
-                    {article.title}
-                  </Link>
-                  <p className="text-xs text-zinc-400">
-                    {(() => {
-                      try {
-                        const d = new Date(article.publishedAt)
-                        return isNaN(d.getTime()) ? "recently" : `${formatDistanceToNow(d)} ago`
-                      } catch {
-                        return "recently"
-                      }
-                    })()}
-                  </p>
+        {firestoreSyncError && activeList.length === 0 ? (
+          <FirestoreErrorBanner onRetry={retryFirestoreSync} />
+        ) : isSyncingFirestore && activeList.length === 0 ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map(n => (
+              <div key={n} className="p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl flex gap-4 items-center animate-pulse">
+                <div className="w-24 h-16 bg-zinc-200 dark:bg-zinc-800 rounded flex-shrink-0" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded" />
+                  <div className="h-3 w-1/4 bg-zinc-200 dark:bg-zinc-800 rounded" />
                 </div>
               </div>
-
-              <div className="flex items-center gap-2 self-end sm:self-center">
-                <Link to={`/article/${article.slug}`}>
-                  <Button size="sm" variant="secondary">
-                    <Eye className="h-4 w-4 mr-1" /> Read
-                  </Button>
-                </Link>
-                {activeTab === 'bookmarks' && (
-                  <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={() => toggleBookmark(article.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-
-        {activeList.length === 0 && (
-          <div className="text-center py-16 text-zinc-500 border rounded-2xl bg-zinc-50 dark:bg-zinc-900/50">
-            {activeTab === 'bookmarks' ? 'कोई बुकमार्क की गई खबर नहीं है।' : 'कोई पठन इतिहास उपलब्ध नहीं है।'}
+            ))}
           </div>
+        ) : (
+          <>
+            {activeList.map(article => (
+              <Card key={article.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <div className="flex gap-4 items-start sm:items-center flex-1">
+                    <img src={getOptimizedImageUrl(article.imageUrl, 200) || undefined} alt={article.title} loading="lazy" decoding="async" className="w-24 h-16 rounded object-cover flex-shrink-0 bg-zinc-100 dark:bg-zinc-800" />
+                    <div className="space-y-1">
+                      <Link to={`/article/${article.slug}`} className="font-bold text-base text-zinc-900 dark:text-white hover:text-red-600 line-clamp-2 transition-colors">
+                        {article.title}
+                      </Link>
+                      <p className="text-xs text-zinc-400">
+                        {(() => {
+                          try {
+                            const d = new Date(article.publishedAt)
+                            return isNaN(d.getTime()) ? "recently" : `${formatDistanceToNow(d)} ago`
+                          } catch {
+                            return "recently"
+                          }
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center">
+                    <Link to={`/article/${article.slug}`}>
+                      <Button size="sm" variant="secondary">
+                        <Eye className="h-4 w-4 mr-1" /> Read
+                      </Button>
+                    </Link>
+                    {activeTab === 'bookmarks' && (
+                      <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50" onClick={() => toggleBookmark(article.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {!isSyncingFirestore && !firestoreSyncError && activeList.length === 0 && (
+              <div className="text-center py-16 text-zinc-500 border rounded-2xl bg-zinc-50 dark:bg-zinc-900/50">
+                {activeTab === 'bookmarks' ? 'कोई बुकमार्क की गई खबर नहीं है।' : 'कोई पठन इतिहास उपलब्ध नहीं है।'}
+              </div>
+            )}
+          </>
         )}
       </div>
     </motion.div>

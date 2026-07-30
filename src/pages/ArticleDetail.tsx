@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, useRef } from "react"
 import { useParams, Link } from "react-router-dom"
 import { formatDistanceToNow } from "date-fns"
 import { 
@@ -17,6 +17,10 @@ import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
 import { getYouTubeEmbedUrl } from "@/lib/youtube"
 import { ArticleShareBar } from "@/components/ArticleShareBar"
+import { db, collection, query, where, getDocs } from "@/lib/firebase"
+import { Comment } from "@/data/mock"
+import { getOptimizedImageUrl } from "@/lib/cloudinary"
+import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
 
 export function ArticleDetail() {
   const { slug } = useParams<{ slug: string }>()
@@ -31,7 +35,10 @@ export function ArticleDetail() {
     bookmarks, 
     toggleBookmark, 
     addToHistory,
-    adSettings 
+    adSettings,
+    isSyncingFirestore,
+    firestoreSyncError,
+    retryFirestoreSync
   } = useNews()
 
   const [commentName, setCommentName] = useState("")
@@ -101,18 +108,119 @@ export function ArticleDetail() {
     })
   }, [articles, slug, decodedSlug])
 
-  // Track views and history safely and scroll to top
+  // Ref to prevent multiple view counts on re-renders for the same article ID
+  const trackedArticleIdRef = useRef<string | null>(null)
+
+  // Scroll to top on route change
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior })
-    if (article?.id) {
+  }, [slug])
+
+  // Track views and history ONCE per article ID
+  const articleId = article?.id
+  useEffect(() => {
+    if (articleId && trackedArticleIdRef.current !== articleId) {
+      trackedArticleIdRef.current = articleId
       try {
-        incrementViews(article.id)
-        addToHistory(article.id)
+        incrementViews(articleId)
+        addToHistory(articleId)
       } catch (err) {
         console.error("Error updating article metrics:", err)
       }
     }
-  }, [slug, article?.id])
+  }, [articleId])
+
+  // Dynamic meta tags on client side for single page navigation
+  useEffect(() => {
+    if (article) {
+      document.title = `${article.title} - Damoh Daily News`
+
+      const updateMetaTag = (attrName: string, attrVal: string, content: string) => {
+        let el = document.querySelector(`meta[${attrName}="${attrVal}"]`)
+        if (!el) {
+          el = document.createElement('meta')
+          el.setAttribute(attrName, attrVal)
+          document.head.appendChild(el)
+        }
+        el.setAttribute('content', content)
+      }
+
+      const fullUrl = window.location.href
+      const desc = article.excerpt || article.title
+      const img = article.imageUrl || "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1200&h=630&fit=crop"
+
+      const authorName = (article as any).authorName || reporter?.name || 'Damoh Daily News'
+      updateMetaTag('name', 'description', desc)
+      updateMetaTag('property', 'og:type', 'article')
+      updateMetaTag('property', 'og:site_name', 'Damoh Daily News')
+      updateMetaTag('property', 'og:title', article.title)
+      updateMetaTag('property', 'og:description', desc)
+      updateMetaTag('property', 'og:image', img)
+      updateMetaTag('property', 'og:image:secure_url', img)
+      updateMetaTag('property', 'og:url', fullUrl)
+      updateMetaTag('property', 'article:published_time', article.publishedAt || new Date().toISOString())
+      updateMetaTag('property', 'article:author', authorName)
+
+      updateMetaTag('name', 'twitter:card', 'summary_large_image')
+      updateMetaTag('name', 'twitter:site', '@DamohDailyNews')
+      updateMetaTag('name', 'twitter:title', article.title)
+      updateMetaTag('name', 'twitter:description', desc)
+      updateMetaTag('name', 'twitter:image', img)
+
+      // Canonical link tag update
+      let canonicalEl = document.querySelector('link[rel="canonical"]')
+      if (!canonicalEl) {
+        canonicalEl = document.createElement('link')
+        canonicalEl.setAttribute('rel', 'canonical')
+        document.head.appendChild(canonicalEl)
+      }
+      canonicalEl.setAttribute('href', fullUrl)
+
+      // JSON-LD NewsArticle schema tag update
+      let jsonLdEl = document.getElementById('article-json-ld')
+      if (!jsonLdEl) {
+        jsonLdEl = document.createElement('script')
+        jsonLdEl.id = 'article-json-ld'
+        jsonLdEl.setAttribute('type', 'application/ld+json')
+        document.head.appendChild(jsonLdEl)
+      }
+      const jsonLdData = {
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "mainEntityOfPage": { "@type": "WebPage", "@id": fullUrl },
+        "headline": article.title,
+        "description": desc,
+        "image": [img],
+        "datePublished": article.publishedAt || new Date().toISOString(),
+        "dateModified": article.updatedAt || article.publishedAt || new Date().toISOString(),
+        "author": { "@type": "Person", "name": authorName },
+        "publisher": {
+          "@type": "Organization",
+          "name": "Damoh Daily News",
+          "url": window.location.origin
+        }
+      }
+      jsonLdEl.textContent = JSON.stringify(jsonLdData)
+    }
+  }, [article?.id, article?.title, article?.excerpt, article?.imageUrl])
+
+  // On-demand fetch for approved comments
+  const [fetchedComments, setFetchedComments] = useState<Comment[]>([])
+
+  useEffect(() => {
+    if (article?.id) {
+      const q = query(
+        collection(db, "comments"),
+        where("articleId", "==", article.id),
+        where("status", "==", "approved")
+      )
+      getDocs(q).then((snap) => {
+        const list: Comment[] = []
+        snap.forEach(d => list.push(d.data() as Comment))
+        setFetchedComments(list)
+      }).catch(() => {})
+    }
+  }, [article?.id])
 
   // Helper for safe date formatting
   const formatDateAgo = (dateStr?: string) => {
@@ -126,7 +234,44 @@ export function ArticleDetail() {
     }
   }
 
-  // 404 Page if article is not found or trashed
+  // Friendly error banner if Firestore sync failed
+  if (!article && firestoreSyncError) {
+    return <FirestoreErrorBanner onRetry={retryFirestoreSync} />
+  }
+
+  // Loading Skeleton while Firestore is syncing
+  if (!article && isSyncingFirestore) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
+        <div className="h-4 w-48 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+        <div className="flex gap-2">
+          <div className="h-6 w-24 bg-red-200 dark:bg-red-950/60 rounded animate-pulse" />
+        </div>
+        <div className="space-y-3">
+          <div className="h-9 w-full bg-zinc-200 dark:bg-zinc-800 rounded-lg animate-pulse" />
+          <div className="h-9 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded-lg animate-pulse" />
+        </div>
+        <div className="flex items-center justify-between py-4 border-y border-zinc-200 dark:border-zinc-800">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+            <div className="space-y-2">
+              <div className="h-4 w-32 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+              <div className="h-3 w-20 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+            </div>
+          </div>
+        </div>
+        <div className="w-full aspect-[16/9] bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse" />
+        <div className="space-y-3 py-4">
+          <div className="h-4 w-full bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+          <div className="h-4 w-full bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+          <div className="h-4 w-5/6 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+          <div className="h-4 w-4/5 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+        </div>
+      </div>
+    )
+  }
+
+  // 404 Page if article is not found or trashed (after sync finishes)
   if (!article || article.status === 'trash') {
     return (
       <div className="container mx-auto px-4 py-20 text-center max-w-lg">
@@ -162,7 +307,8 @@ export function ArticleDetail() {
   const isBookmarked = bookmarks.includes(article.id)
   
   // Safe comments filter
-  const articleComments = comments.filter(c => c && c.articleId === article.id && c.status === 'approved')
+  const contextArticleComments = comments.filter(c => c && c.articleId === article?.id && c.status === 'approved')
+  const articleComments = contextArticleComments.length > 0 ? contextArticleComments : fetchedComments
 
   // Related articles filter
   const relatedArticles = articles
@@ -248,8 +394,10 @@ export function ArticleDetail() {
         <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-y border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-3">
             <img 
-              src={reporter.avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"} 
+              src={getOptimizedImageUrl(reporter.avatar, 100) || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&fm=webp"} 
               alt={reporter.name} 
+              loading="lazy"
+              decoding="async"
               className="w-12 h-12 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 bg-zinc-100" 
             />
             <div>
@@ -297,8 +445,10 @@ export function ArticleDetail() {
         {/* Feature Image */}
         <figure>
           <img 
-            src={articleImageUrl || undefined} 
+            src={getOptimizedImageUrl(articleImageUrl, 1200) || undefined} 
             alt={article.title}
+            loading="eager"
+            decoding="async"
             className="w-full rounded-xl shadow-sm object-cover max-h-[520px] bg-zinc-100 dark:bg-zinc-900"
           />
         </figure>

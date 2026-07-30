@@ -1,7 +1,7 @@
 /**
- * Cloudinary Integration Service
- * Supports both Signed Uploads (via /api/cloudinary-sign server API route for presets like 'ml_default')
- * and Unsigned Uploads directly from browser with folder organization & WebP/AVIF optimizations.
+ * Secure Cloudinary Integration Service
+ * Uses server-side SHA1 signature (/api/cloudinary-sign) for secure authenticated uploads.
+ * Unsigned upload fallback has been strictly removed for security.
  */
 
 export type CloudinaryFolder = 'news' | 'reporters' | 'gallery' | 'logos' | 'banners' | string;
@@ -31,8 +31,83 @@ export function getCloudinaryConfig() {
 }
 
 /**
- * Uploads a file to Cloudinary into a designated folder.
- * Supports signed uploads (using server-side SHA1 signature) and unsigned uploads.
+ * Compress an image file/blob in browser before upload.
+ * Resizes large images to max 1920px on the longest side while maintaining original aspect ratio.
+ * Converts to compressed WebP (84% quality) for optimal clarity and fast load times.
+ */
+export async function compressImage(
+  file: File | Blob,
+  maxLongestSide = 1920,
+  quality = 0.84
+): Promise<Blob> {
+  // If not an image, return original
+  if (file.type && !file.type.startsWith('image/')) {
+    return file;
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+
+      let width = img.width;
+      let height = img.height;
+
+      // Scale down if longest side exceeds maxLongestSide
+      const longestSide = Math.max(width, height);
+      if (longestSide > maxLongestSide) {
+        const scale = maxLongestSide / longestSide;
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Export to high quality WebP format (or fallback JPEG)
+      canvas.toBlob(
+        (blob) => {
+          if (blob && blob.size > 0) {
+            resolve(blob);
+          } else {
+            // Fallback to JPEG if WebP canvas export is unsupported
+            canvas.toBlob(
+              (fallbackBlob) => resolve(fallbackBlob || file),
+              'image/jpeg',
+              quality
+            );
+          }
+        },
+        'image/webp',
+        quality
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+/**
+ * Uploads a file to Cloudinary strictly using signed uploads.
+ * Automatically compresses high-resolution files to WebP before upload.
  */
 export async function uploadToCloudinary(
   file: File | Blob,
@@ -42,7 +117,10 @@ export async function uploadToCloudinary(
   const folderPath = `damoh_news/${folder}`;
   const timestamp = Math.floor(Date.now() / 1000);
 
-  // 1. Try Signed Upload via Server Signing Route (/api/cloudinary-sign)
+  // Compress image before upload
+  const uploadFile = await compressImage(file);
+
+  // Secure Signed Upload via Server Signing Route (/api/cloudinary-sign)
   try {
     const signRes = await fetch("/api/cloudinary-sign", {
       method: "POST",
@@ -59,7 +137,7 @@ export async function uploadToCloudinary(
       if (signData.signed && signData.signature && signData.apiKey) {
         const url = `https://api.cloudinary.com/v1_1/${signData.cloudName || config.cloudName}/image/upload`;
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append("file", uploadFile);
         formData.append("api_key", signData.apiKey);
         formData.append("timestamp", String(signData.timestamp));
         formData.append("signature", signData.signature);
@@ -81,54 +159,30 @@ export async function uploadToCloudinary(
           };
         } else {
           const errJson = await response.json().catch(() => ({}));
-          console.warn("Signed Cloudinary upload returned error, trying unsigned fallback:", errJson);
+          console.error("Signed Cloudinary upload failed on Cloudinary API:", errJson);
         }
+      } else {
+        console.warn("Cloudinary signing route response missing signed signature:", signData);
       }
+    } else {
+      const errRes = await signRes.json().catch(() => ({}));
+      console.warn("Cloudinary signature route returned error:", errRes);
     }
   } catch (err) {
-    console.warn("Server signing route unavailable or failed:", err);
+    console.error("Signed Cloudinary upload network error:", err);
   }
 
-  // 2. Direct Unsigned Upload Fallback
-  const unsignedUrl = `https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`;
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", config.uploadPreset);
-  formData.append("folder", folderPath);
-
-  try {
-    const response = await fetch(unsignedUrl, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (response.ok) {
-      const data: CloudinaryUploadResponse = await response.json();
-      const optimizedUrl = optimizeCloudinaryUrl(data.secure_url || data.url);
-      return {
-        url: optimizedUrl,
-        publicId: data.public_id,
-        format: data.format
-      };
-    } else {
-      const errorData = await response.json().catch(() => ({}));
-      console.warn("Cloudinary upload failed:", errorData);
-    }
-  } catch (error) {
-    console.error("Cloudinary request error:", error);
-  }
-
-  // 3. Client Local Data URL Fallback
+  // Client Local Data URL Fallback (For instant client preview if upload credentials are not configured)
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onloadend = () => {
       resolve({
         url: reader.result as string,
         publicId: `local_${Date.now()}`,
-        format: file.type.split("/")[1] || "jpeg"
+        format: uploadFile.type.split("/")[1] || "webp"
       });
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(uploadFile);
   });
 }
 
@@ -137,18 +191,53 @@ export async function uploadToCloudinary(
  */
 export function optimizeCloudinaryUrl(
   url: string, 
-  options?: { width?: number; height?: number; crop?: string }
+  options?: { width?: number; height?: number; crop?: string } | number
 ): string {
   if (!url || !url.includes("res.cloudinary.com")) {
     return url;
   }
 
+  const opts = typeof options === 'number' ? { width: options } : options;
   const transformations: string[] = ["f_auto", "q_auto"];
-  if (options?.width) transformations.push(`w_${options.width}`);
-  if (options?.height) transformations.push(`h_${options.height}`);
-  if (options?.crop) transformations.push(`c_${options.crop}`);
+  if (opts?.width) transformations.push(`w_${opts.width}`);
+  if (opts?.height) transformations.push(`h_${opts.height}`);
+  if (opts?.crop) transformations.push(`c_${opts.crop}`);
 
   const transformString = transformations.join(",");
 
+  if (url.includes("/upload/f_auto,q_auto/")) return url;
+
   return url.replace("/upload/", `/upload/${transformString}/`);
+}
+
+/**
+ * Universal Image URL Optimizer.
+ * Converts Unsplash, Cloudinary, and external URLs to auto WebP format & optimal width.
+ */
+export function getOptimizedImageUrl(
+  url?: string,
+  options?: { width?: number; height?: number; crop?: string } | number
+): string {
+  if (!url || typeof url !== 'string') return '';
+
+  const opts = typeof options === 'number' ? { width: options } : options;
+
+  // Cloudinary Optimization
+  if (url.includes('res.cloudinary.com')) {
+    return optimizeCloudinaryUrl(url, opts);
+  }
+
+  // Unsplash Optimization (WebP + Auto format)
+  if (url.includes('images.unsplash.com')) {
+    let opt = url.includes('?') ? `${url}&auto=format&fit=crop&q=80` : `${url}?auto=format&fit=crop&q=80`;
+    if (opts?.width && !url.includes('w=')) {
+      opt += `&w=${opts.width}`;
+    }
+    if (!url.includes('fm=')) {
+      opt += `&fm=webp`;
+    }
+    return opt;
+  }
+
+  return url;
 }

@@ -23,31 +23,18 @@ import {
   onSnapshot, 
   query, 
   orderBy, 
+  where,
   serverTimestamp 
 } from "firebase/firestore";
-// Default Firebase Configuration
-const DEFAULT_FIREBASE_CONFIG = {
-  projectId: "damoh-daily-news",
-  appId: "1:548384927269:web:5f4fdb181d9218731599cc",
-  apiKey: "AIzaSyAqqGLWs0rXdM_Cp2q2HPkDgToASXCCoCM",
-  authDomain: "damoh-daily-news.firebaseapp.com",
-  firestoreDatabaseId: "(default)",
-  storageBucket: "damoh-daily-news.firebasestorage.app",
-  messagingSenderId: "548384927269",
-  measurementId: "",
-  oAuthClientId: "548384927269-600f91bobh1rsb50jn2uqakb228m38mp.apps.googleusercontent.com",
-  recaptchaSiteKey: ""
-};
-
-// Read Firebase config from environment variables or default config
+// Read Firebase config from environment variables or project defaults
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || DEFAULT_FIREBASE_CONFIG.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || DEFAULT_FIREBASE_CONFIG.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_CONFIG.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || DEFAULT_FIREBASE_CONFIG.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || DEFAULT_FIREBASE_CONFIG.appId,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || DEFAULT_FIREBASE_CONFIG.measurementId || ""
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAqqGLWs0rXdM_Cp2q2HPkDgToASXCCoCM",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "damoh-daily-news.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "damoh-daily-news",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "damoh-daily-news.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "548384927269",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:548384927269:web:5f4fdb181d9218731599cc",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
 };
 
 // Initialize Firebase App
@@ -58,7 +45,7 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
 // Initialize Firestore (using custom database ID if specified in config)
-const databaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || DEFAULT_FIREBASE_CONFIG.firestoreDatabaseId;
+const databaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || "(default)";
 export const db = databaseId && databaseId !== "(default)" 
   ? getFirestore(app, databaseId) 
   : getFirestore(app);
@@ -82,6 +69,7 @@ export {
   onSnapshot, 
   query, 
   orderBy, 
+  where,
   serverTimestamp 
 };
 

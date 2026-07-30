@@ -1,14 +1,23 @@
+import { useState, useEffect, useRef } from "react"
 import { useSearchParams, Link } from "react-router-dom"
 import { useNews } from "@/context/NewsContext"
 import { motion } from "motion/react"
-import { Clock } from "lucide-react"
+import { Clock, ChevronDown } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
+import { getOptimizedImageUrl } from "@/lib/cloudinary"
+import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
 
 export function SearchResults() {
   const [searchParams] = useSearchParams()
   const query = searchParams.get("q") || ""
-  const { articles } = useNews()
-  
+  const { articles, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
+  const [visibleCount, setVisibleCount] = useState(6)
+  const loaderRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setVisibleCount(6)
+  }, [query])
+
   const searchResults = articles.filter(a => {
     if (!a) return false
     const q = query.toLowerCase()
@@ -17,15 +26,59 @@ export function SearchResults() {
     const contentMatch = (a.content || "").toLowerCase().includes(q)
     return titleMatch || excerptMatch || contentMatch
   })
+
+  const visibleResults = searchResults.slice(0, visibleCount)
+
+  // Infinite Scroll Trigger
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && visibleCount < searchResults.length) {
+          setVisibleCount(prev => Math.min(prev + 6, searchResults.length))
+        }
+      },
+      { threshold: 0.2 }
+    )
+
+    if (loaderRef.current) {
+      observer.observe(loaderRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [visibleCount, searchResults.length])
+
+  if (firestoreSyncError && searchResults.length === 0) {
+    return <FirestoreErrorBanner onRetry={retryFirestoreSync} />
+  }
+
+  if (isSyncingFirestore && searchResults.length === 0) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-7xl space-y-8">
+        <div className="mb-8 border-b-2 border-zinc-200 dark:border-zinc-800 pb-4 space-y-2">
+          <div className="h-8 w-48 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+          <div className="h-4 w-32 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map(n => (
+            <div key={n} className="space-y-3">
+              <div className="aspect-video bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse" />
+              <div className="h-5 w-full bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+              <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
   
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="container mx-auto px-4 py-8 max-w-7xl"
+      className="container mx-auto px-4 py-8 max-w-7xl space-y-8"
     >
-      <div className="mb-8 border-b-2 border-zinc-900 dark:border-white pb-4">
+      <div className="border-b-2 border-zinc-900 dark:border-white pb-4">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
           Search Results
         </h1>
@@ -35,39 +88,55 @@ export function SearchResults() {
       </div>
       
       {searchResults.length === 0 ? (
-        <div className="text-center py-12 text-zinc-500">
-          No articles found matching your search. Try different keywords.
+        <div className="text-center py-16 text-zinc-500 font-medium">
+          आपके खोज शब्द से मेल खाता हुआ कोई समाचार नहीं मिला। कृपया अन्य शब्द खोजें।
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {searchResults.map(article => (
-            <Link to={`/article/${article.slug}`} key={article.id} className="group flex flex-col gap-3">
-              <div className="relative aspect-video rounded-xl overflow-hidden shadow-sm">
-                <img 
-                  src={article.imageUrl || undefined} 
-                  alt={article.title}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-              </div>
-              <h3 className="font-bold text-lg leading-tight group-hover:text-red-600 transition-colors">
-                {article.title}
-              </h3>
-              <p className="text-zinc-500 text-sm line-clamp-2">
-                {article.excerpt}
-              </p>
-              <div className="text-xs text-zinc-400 mt-auto flex items-center gap-1">
-                <Clock className="h-3 w-3" /> {(() => {
-                  try {
-                    const d = new Date(article.publishedAt)
-                    return isNaN(d.getTime()) ? "recently" : `${formatDistanceToNow(d)} ago`
-                  } catch {
-                    return "recently"
-                  }
-                })()}
-              </div>
-            </Link>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {visibleResults.map(article => (
+              <Link to={`/article/${article.slug}`} key={article.id} className="group flex flex-col gap-3">
+                <div className="relative aspect-video rounded-xl overflow-hidden shadow-sm bg-zinc-100 dark:bg-zinc-800">
+                  <img 
+                    src={getOptimizedImageUrl(article.imageUrl, 500) || undefined} 
+                    alt={article.title}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                </div>
+                <h3 className="font-bold text-lg leading-tight group-hover:text-red-600 transition-colors">
+                  {article.title}
+                </h3>
+                <p className="text-zinc-500 text-sm line-clamp-2">
+                  {article.excerpt}
+                </p>
+                <div className="text-xs text-zinc-400 mt-auto flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> {(() => {
+                    try {
+                      const d = new Date(article.publishedAt)
+                      return isNaN(d.getTime()) ? "recently" : `${formatDistanceToNow(d)} ago`
+                    } catch {
+                      return "recently"
+                    }
+                  })()}
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Infinite Scroll loader & Load More trigger */}
+          {visibleCount < searchResults.length && (
+            <div ref={loaderRef} className="text-center pt-8">
+              <button
+                onClick={() => setVisibleCount(prev => Math.min(prev + 6, searchResults.length))}
+                className="px-6 py-2.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-bold text-xs sm:text-sm rounded-xl inline-flex items-center gap-2 transition-colors"
+              >
+                और परिणाम लोड करें <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </motion.div>
   )

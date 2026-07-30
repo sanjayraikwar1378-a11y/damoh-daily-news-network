@@ -18,8 +18,28 @@ export function Header() {
   const [drawerSearchQuery, setDrawerSearchQuery] = useState("")
 
   useEffect(() => {
-    if (document.documentElement.classList.contains('dark')) {
-      setIsDark(true)
+    const isDarkModeActive = document.documentElement.classList.contains('dark')
+    setIsDark(isDarkModeActive)
+
+    const mediaQuery = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)')
+    if (!mediaQuery) return
+
+    const handleSystemThemeChange = (e: MediaQueryListEvent) => {
+      // Only update automatically if user has not set a manual preference in localStorage
+      if (!localStorage.getItem('theme')) {
+        if (e.matches) {
+          document.documentElement.classList.add('dark')
+          setIsDark(true)
+        } else {
+          document.documentElement.classList.remove('dark')
+          setIsDark(false)
+        }
+      }
+    }
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleSystemThemeChange)
+      return () => mediaQuery.removeEventListener('change', handleSystemThemeChange)
     }
   }, [])
 
@@ -44,8 +64,15 @@ export function Header() {
   }, [mobileMenuOpen])
 
   const toggleDarkMode = () => {
-    setIsDark(!isDark)
-    document.documentElement.classList.toggle('dark')
+    const nextDark = !isDark
+    setIsDark(nextDark)
+    if (nextDark) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
+    }
   }
 
   const handleDrawerSearch = (e: React.FormEvent) => {

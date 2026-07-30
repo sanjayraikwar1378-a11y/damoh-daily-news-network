@@ -6,9 +6,11 @@ import { Button } from '@/components/ui/button'
 import { motion } from "motion/react"
 import { useNews } from '@/context/NewsContext'
 import { WeatherWidget } from '@/components/WeatherWidget'
+import { getOptimizedImageUrl } from '@/lib/cloudinary'
+import { FirestoreErrorBanner } from '@/components/FirestoreErrorBanner'
 
 export function Home() {
-  const { articles, categories, adSettings, toggleBookmark, bookmarks, marketRates, siteSettings } = useNews()
+  const { articles, categories, adSettings, toggleBookmark, bookmarks, marketRates, siteSettings, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
 
   const formatDateSafe = (dateStr?: string) => {
     if (!dateStr) return "हाल ही में"
@@ -44,6 +46,72 @@ export function Home() {
 
   const tickerNews = breakingNews.length > 0 ? breakingNews : publishedArticles.slice(0, 5)
 
+  // Calculate constant scrolling speed (~7s per item, min 20s)
+  const marqueeDuration = Math.max(20, tickerNews.length * 7)
+
+  // Friendly error state if Firestore sync failed or timed out
+  if (firestoreSyncError && publishedArticles.length === 0) {
+    return <FirestoreErrorBanner onRetry={retryFirestoreSync} />
+  }
+
+  // Skeleton state while syncing from Firestore
+  if (isSyncingFirestore && publishedArticles.length === 0) {
+    return (
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 max-w-7xl space-y-8">
+        <div className="h-10 bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
+          <div className="lg:col-span-8 aspect-[16/10] bg-zinc-200 dark:bg-zinc-800 rounded-2xl animate-pulse" />
+          <div className="lg:col-span-4 space-y-4">
+            <div className="h-8 w-40 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-2" />
+            {[1, 2, 3, 4].map(n => (
+              <div key={n} className="flex gap-3 items-center">
+                <div className="w-8 h-8 rounded bg-red-200 dark:bg-red-950/40 animate-pulse" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 w-full bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+                  <div className="h-3 w-1/2 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div className="h-8 w-48 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map(n => (
+              <div key={n} className="space-y-3">
+                <div className="aspect-video bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse" />
+                <div className="h-4 w-full bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+                <div className="h-3 w-2/3 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Clean empty state if Firestore sync completed successfully with 0 published articles
+  if (!isSyncingFirestore && !firestoreSyncError && publishedArticles.length === 0) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center max-w-md space-y-4">
+        <div className="p-4 bg-zinc-100 dark:bg-zinc-900 rounded-full w-16 h-16 mx-auto flex items-center justify-center text-zinc-400">
+          <Flame className="h-8 w-8 text-red-600" />
+        </div>
+        <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
+          अभी कोई खबर प्रकाशित नहीं हुई है
+        </h2>
+        <p className="text-sm text-zinc-500">
+          नवीनतम समाचार अपडेट देखने के लिए कृपया बाद में पुनः जांचें या एडमिन पैनल से समाचार प्रकाशित करें।
+        </p>
+        <Link to="/admin">
+          <Button className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs mt-2">
+            एडमिन पैनल पर जाएं (Go to Admin)
+          </Button>
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 15 }}
@@ -61,10 +129,13 @@ export function Home() {
             <span className="xs:hidden">ब्रेकिंग</span>
           </div>
           <div className="px-3 sm:px-4 py-2 sm:py-2.5 overflow-hidden relative w-full flex">
-            <div className="animate-marquee whitespace-nowrap text-xs sm:text-sm font-semibold flex items-center">
+            <div 
+              className="animate-marquee whitespace-nowrap text-xs sm:text-sm font-semibold flex items-center shrink-0 hover:[animation-play-state:paused]"
+              style={{ animationDuration: `${marqueeDuration}s` }}
+            >
               {tickerNews.map(news => (
                 <span key={news.id} className="mr-8 sm:mr-10 inline-flex items-center">
-                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500 mr-2 animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500 mr-2 animate-pulse shrink-0"></span>
                   <Link to={`/article/${news.slug}`} className="hover:text-red-400 transition-colors">
                     {news.title}
                   </Link>
@@ -72,7 +143,7 @@ export function Home() {
               ))}
               {tickerNews.map(news => (
                 <span key={`${news.id}-dup`} className="mr-8 sm:mr-10 inline-flex items-center">
-                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500 mr-2 animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-500 mr-2 animate-pulse shrink-0"></span>
                   <Link to={`/article/${news.slug}`} className="hover:text-red-400 transition-colors">
                     {news.title}
                   </Link>
@@ -91,8 +162,10 @@ export function Home() {
           <div className="lg:col-span-8 group">
             <Link to={`/article/${heroArticle.slug}`} className="block relative rounded-2xl overflow-hidden shadow-lg aspect-[16/10] sm:aspect-[16/9] lg:aspect-[16/10] bg-zinc-900">
               <img 
-                src={heroArticle.imageUrl || undefined} 
+                src={getOptimizedImageUrl(heroArticle.imageUrl, 1000) || undefined} 
                 alt={heroArticle.title}
+                loading="eager"
+                decoding="async"
                 className="object-cover w-full h-full transition-transform duration-700 group-hover:scale-105 opacity-90"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent flex flex-col justify-end p-4 sm:p-6 md:p-8">
@@ -151,7 +224,7 @@ export function Home() {
               <div className="mt-auto pt-4 border-t border-border text-center">
                 <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">ADVERTISEMENT</span>
                 <a href={adSettings.sidebarAd.linkUrl || '#'} target="_blank" rel="noopener noreferrer">
-                  <img src={adSettings.sidebarAd.imageUrl || undefined} alt="Sidebar Ad" className="w-full rounded-xl object-cover max-h-48" />
+                  <img src={getOptimizedImageUrl(adSettings.sidebarAd.imageUrl, 400) || undefined} alt="Sidebar Ad" loading="lazy" decoding="async" className="w-full rounded-xl object-cover max-h-48" />
                 </a>
               </div>
             )}
@@ -173,7 +246,7 @@ export function Home() {
             {editorsPick.slice(0, 3).map(article => (
               <Link to={`/article/${article.slug}`} key={article.id} className="group space-y-3">
                 <div className="aspect-video rounded-xl overflow-hidden bg-zinc-800">
-                  <img src={article.imageUrl || undefined} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <img src={getOptimizedImageUrl(article.imageUrl, 500) || undefined} alt={article.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                 </div>
                 <h3 className="font-bold text-base text-zinc-100 group-hover:text-amber-400 transition-colors line-clamp-2">
                   {article.title}
@@ -209,7 +282,7 @@ export function Home() {
               {damohArticles.slice(0, 4).map(article => (
                 <div key={article.id} className="group flex flex-col gap-2 border rounded-xl p-3 bg-card hover:shadow-md transition-shadow">
                   <Link to={`/article/${article.slug}`} className="aspect-video rounded-lg overflow-hidden bg-zinc-100">
-                    <img src={article.imageUrl || undefined} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <img src={getOptimizedImageUrl(article.imageUrl, 450) || undefined} alt={article.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                   </Link>
                   <Link to={`/article/${article.slug}`}>
                     <h3 className="font-bold text-base leading-snug group-hover:text-red-600 transition-colors line-clamp-2">
@@ -360,7 +433,7 @@ export function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {publishedArticles.slice(0, 3).map(art => (
             <Link to={`/article/${art.slug}`} key={art.id} className="group relative rounded-xl overflow-hidden aspect-video bg-zinc-800 block">
-              <img src={art.imageUrl || undefined} alt={art.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80" />
+              <img src={getOptimizedImageUrl(art.imageUrl, 500) || undefined} alt={art.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-4 flex flex-col justify-between">
                 <div className="w-10 h-10 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg self-center my-auto group-hover:scale-110 transition-transform">
                   <Play className="h-5 w-5 fill-current ml-0.5" />
@@ -383,7 +456,7 @@ export function Home() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {publishedArticles.slice(0, 4).map(art => (
             <Link to={`/article/${art.slug}`} key={art.id} className="group relative rounded-xl overflow-hidden aspect-square block bg-zinc-100">
-              <img src={art.imageUrl || undefined} alt={art.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              <img src={getOptimizedImageUrl(art.imageUrl, 400) || undefined} alt={art.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-3 flex items-end">
                 <p className="text-xs font-bold text-white line-clamp-2">{art.title}</p>
               </div>
