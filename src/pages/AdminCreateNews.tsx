@@ -9,6 +9,7 @@ import { useNavigate, useParams, Link } from "react-router-dom"
 import { ArticleStatus } from "@/data/mock"
 import { getYouTubeEmbedUrl, isValidYouTubeUrl, extractYouTubeId } from "@/lib/youtube"
 import { uploadToCloudinary } from "@/lib/cloudinary"
+import { ResponsiveImage } from "@/components/ResponsiveImage"
 
 export function AdminCreateNews() {
   const { id } = useParams<{ id?: string }>()
@@ -583,7 +584,9 @@ export function AdminCreateNews() {
             </div>
             <h1 className="text-3xl font-black">{formData.title || "Untitled Article"}</h1>
             {formData.excerpt && <p className="text-lg text-zinc-600 border-l-4 border-red-600 pl-3">{formData.excerpt}</p>}
-            {Boolean(formData.imageUrl?.trim()) && <img src={formData.imageUrl || undefined} alt="Preview" className="w-full rounded-xl max-h-80 object-cover" />}
+            {Boolean(formData.imageUrl?.trim()) && (
+              <ResponsiveImage src={formData.imageUrl} alt={formData.title || "Preview"} type="article" />
+            )}
             <div className="prose max-w-none text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap">{formData.content}</div>
             
             {/* YouTube Embed in Preview Modal */}

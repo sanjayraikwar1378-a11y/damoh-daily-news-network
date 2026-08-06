@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useNews } from "@/context/NewsContext"
 import { motion } from "motion/react"
@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns"
 import { WeatherWidget } from "@/components/WeatherWidget"
 import { getOptimizedImageUrl } from "@/lib/cloudinary"
 import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
+import { ResponsiveImage } from "@/components/ResponsiveImage"
 
 export function CategoryPage() {
   const { slug } = useParams()
@@ -14,9 +15,12 @@ export function CategoryPage() {
   const [visibleCount, setVisibleCount] = useState(6)
   const loaderRef = useRef<HTMLDivElement | null>(null)
   
-  const category = categories.find(c => c.slug === slug)
-  const categoryArticles = category ? articles.filter(a => a.categoryIds?.includes(category.id)) : []
-  const visibleArticles = categoryArticles.slice(0, visibleCount)
+  const category = useMemo(() => categories.find(c => c.slug === slug), [categories, slug])
+  const categoryArticles = useMemo(() => {
+    if (!category) return []
+    return articles.filter(a => (a.status || 'published') === 'published' && a.categoryIds?.includes(category.id))
+  }, [category, articles])
+  const visibleArticles = useMemo(() => categoryArticles.slice(0, visibleCount), [categoryArticles, visibleCount])
 
   // Infinite Scroll Trigger
   useEffect(() => {
@@ -64,15 +68,15 @@ export function CategoryPage() {
     )
   }
 
-  if (!category && !isSyncingFirestore) {
+  const isWeatherCategory = slug === 'weather' || Boolean(category?.name && (category.name.includes('मौसम') || category.name.toLowerCase().includes('weather')))
+  
+  if (!category) {
     return (
       <div className="container py-20 text-center font-bold text-zinc-500">
         श्रेणी नहीं मिली (Category not found)
       </div>
     )
   }
-  
-  const isWeatherCategory = slug === 'weather' || category.name.includes('मौसम') || category.name.toLowerCase().includes('weather')
   
   return (
     <motion.div 
@@ -107,12 +111,13 @@ export function CategoryPage() {
             {visibleArticles.map(article => (
               <Link to={`/article/${article.slug}`} key={article.id} className="group flex flex-col gap-3">
                 <div className="relative aspect-video rounded-xl overflow-hidden shadow-sm bg-zinc-100 dark:bg-zinc-800">
-                  <img 
-                    src={getOptimizedImageUrl(article.imageUrl, 500) || undefined} 
+                  <ResponsiveImage 
+                    src={article.imageUrl} 
                     alt={article.title}
+                    type="card"
                     loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    defaultWidth={480}
+                    className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
                   />
                 </div>
                 <h3 className="font-bold text-lg leading-tight group-hover:text-red-600 transition-colors">

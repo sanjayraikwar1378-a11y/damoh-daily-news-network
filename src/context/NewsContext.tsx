@@ -28,6 +28,8 @@ import {
   addDoc,
   sanitizeFirestoreData 
 } from '@/lib/firebase';
+import { isWithin48Hours } from '@/lib/utils';
+import { saveArticlesToCache } from '@/lib/articleCache';
 
 export function createSlug(title: string, uniqueId?: string): string {
   let clean = title.trim()
@@ -48,6 +50,7 @@ export function createSlug(title: string, uniqueId?: string): string {
 interface NewsContextType {
   // Articles
   articles: Article[];
+  breakingNews: Article[];
   addArticle: (article: Omit<Article, 'id' | 'views' | 'likes' | 'publishedAt'> & { publishedAt?: string }) => Promise<Article>;
   updateArticle: (id: string, article: Partial<Article>) => Promise<void>;
   deleteArticle: (id: string) => void;
@@ -138,21 +141,23 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('online', handleOnline);
   }, [retryFirestoreSync]);
 
-  // 1. Lightweight Public Real-time Subscriptions (Articles & Categories only)
+  // 1. Lightweight Public Real-time Subscriptions (Articles, Categories & Reporters)
   useEffect(() => {
     let unsubArticles = () => {};
     let unsubCategories = () => {};
+    let unsubReporters = () => {};
     let isMounted = true;
 
     let hasArticlesLoaded = false;
     let hasCategoriesLoaded = false;
+    let hasReportersLoaded = false;
 
     setIsSyncingFirestore(true);
     setFirestoreSyncError(false);
 
-    // Helper to evaluate if both initial snapshot reads have finished
+    // Helper to evaluate if initial snapshot reads have finished
     const notifyIfInitialSyncDone = () => {
-      if (isMounted && hasArticlesLoaded && hasCategoriesLoaded) {
+      if (isMounted && hasArticlesLoaded && hasCategoriesLoaded && hasReportersLoaded) {
         setIsSyncingFirestore(false);
         setFirestoreSyncError(false);
       }
@@ -161,7 +166,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     // Emergency fallback timer: strictly 12 seconds in case network is disconnected or Firestore completely fails to respond
     const emergencyTimer = setTimeout(() => {
       if (isMounted) {
-        if (!hasArticlesLoaded || !hasCategoriesLoaded) {
+        if (!hasArticlesLoaded || !hasCategoriesLoaded || !hasReportersLoaded) {
           console.warn("Firestore sync emergency fallback triggered after 12s");
           setIsSyncingFirestore(false);
           setFirestoreSyncError(true);
@@ -202,6 +207,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         if (list.length > 0) {
           list.sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime());
           setArticles(list);
+          saveArticlesToCache(list);
         } else {
           setArticles([]);
         }
@@ -240,6 +246,34 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         }
       });
 
+      // 3. Reporters Sync (Public Real-time for All Visitors)
+      unsubReporters = onSnapshot(collection(db, "reporters"), (snap) => {
+        const list: Reporter[] = [];
+        snap.forEach((d) => {
+          const raw = d.data() as any;
+          const photo = raw.avatar || raw.photoUrl || raw.image || raw.photo || '';
+          list.push({
+            ...raw,
+            id: d.id || raw.id,
+            avatar: photo,
+            photoUrl: photo
+          } as Reporter);
+        });
+        if (list.length > 0) {
+          setReporters(list);
+        } else {
+          setReporters([]);
+        }
+        hasReportersLoaded = true;
+        notifyIfInitialSyncDone();
+      }, (err) => {
+        console.warn("Reporters listener notice:", err);
+        if (isMounted) {
+          hasReportersLoaded = true;
+          notifyIfInitialSyncDone();
+        }
+      });
+
     } catch (err) {
       console.warn("Public listeners warning:", err);
       if (isMounted) {
@@ -262,6 +296,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       clearTimeout(emergencyTimer);
       unsubArticles();
       unsubCategories();
+      unsubReporters();
     };
   }, [syncRetryCount]);
 
@@ -272,7 +307,16 @@ export function NewsProvider({ children }: { children: ReactNode }) {
 
     const unsubReporters = onSnapshot(collection(db, "reporters"), (snap) => {
       const list: Reporter[] = [];
-      snap.forEach((d) => list.push(d.data() as Reporter));
+      snap.forEach((d) => {
+        const raw = d.data() as any;
+        const photo = raw.avatar || raw.photoUrl || raw.image || raw.photo || '';
+        list.push({
+          ...raw,
+          id: d.id || raw.id,
+          avatar: photo,
+          photoUrl: photo
+        } as Reporter);
+      });
       if (list.length > 0) {
         setReporters(list);
       } else {
@@ -327,7 +371,12 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   // Auto-load admin collections if URL starts with /admin
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
-      loadAdminData();
+      const cleanup = loadAdminData();
+      return () => {
+        if (typeof cleanup === 'function') {
+          cleanup();
+        }
+      };
     }
   }, [loadAdminData]);
 
@@ -687,8 +736,48 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // Active breaking news selector: includes ALL published articles from the last 48 hours.
+  // Priority: 'isBreaking === true' articles appear FIRST (newest first), followed by remaining published articles (newest first).
+  const breakingNews = useMemo(() => {
+    const recentArticles = articles.filter(article => {
+      const status = article.status || 'published';
+      if (status !== 'published') return false;
+      const dateVal = article.publishedAt || (article as any).createdAt || (article as any).updatedAt;
+      return isWithin48Hours(dateVal);
+    });
+
+    const parseTime = (art: Article) => {
+      const val = art.publishedAt || (art as any).createdAt || (art as any).updatedAt;
+      if (!val) return 0;
+      if (typeof val === 'number') return val;
+      if (typeof val === 'string') return new Date(val).getTime() || 0;
+      if (typeof val === 'object') {
+        if (typeof val.toDate === 'function') return val.toDate().getTime();
+        if ('seconds' in val && typeof val.seconds === 'number') return val.seconds * 1000;
+      }
+      return new Date(val).getTime() || 0;
+    };
+
+    const breaking: Article[] = [];
+    const regular: Article[] = [];
+
+    recentArticles.forEach(art => {
+      if (art.isBreaking) {
+        breaking.push(art);
+      } else {
+        regular.push(art);
+      }
+    });
+
+    breaking.sort((a, b) => parseTime(b) - parseTime(a));
+    regular.sort((a, b) => parseTime(b) - parseTime(a));
+
+    return [...breaking, ...regular];
+  }, [articles]);
+
   const contextValue = useMemo(() => ({
     articles,
+    breakingNews,
     addArticle,
  updateArticle,
     deleteArticle,
@@ -730,6 +819,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     loadAdminData
   }), [
     articles,
+    breakingNews,
     categories,
     reporters,
     comments,

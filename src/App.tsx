@@ -15,10 +15,12 @@ import { ScrollToTop } from "./components/ScrollToTop"
 
 // Lazy-loaded pages for code splitting & bundle optimization
 const ArticleDetail = lazy(() => import("./pages/ArticleDetail").then(m => ({ default: m.ArticleDetail })))
+const LatestNewsPage = lazy(() => import("./pages/LatestNewsPage").then(m => ({ default: m.LatestNewsPage })))
 const CategoryPage = lazy(() => import("./pages/CategoryPage").then(m => ({ default: m.CategoryPage })))
 const SearchResults = lazy(() => import("./pages/SearchResults").then(m => ({ default: m.SearchResults })))
 const UserBookmarks = lazy(() => import("./pages/UserBookmarks").then(m => ({ default: m.UserBookmarks })))
 const ContactUs = lazy(() => import("./pages/ContactUs").then(m => ({ default: m.ContactUs })))
+const AboutUs = lazy(() => import("./pages/AboutUs").then(m => ({ default: m.AboutUs })))
 
 // Legal Pages
 const Disclaimer = lazy(() => import("./pages/LegalPages").then(m => ({ default: m.Disclaimer })))
@@ -65,17 +67,21 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<MainLayout />}>
                   <Route index element={<Home />} />
+                  <Route path="latest-news" element={<LatestNewsPage />} />
                   <Route path="article/:slug" element={<ArticleDetail />} />
                   <Route path="category/:slug" element={<CategoryPage />} />
                   <Route path="search" element={<SearchResults />} />
                   <Route path="bookmarks" element={<UserBookmarks />} />
                   <Route path="contact" element={<ContactUs />} />
+                  <Route path="about" element={<AboutUs />} />
+                  <Route path="about-us" element={<AboutUs />} />
                   <Route path="disclaimer" element={<Disclaimer />} />
                   <Route path="copyright-policy" element={<CopyrightPolicy />} />
                   <Route path="corrections-policy" element={<CorrectionsPolicy />} />
                   <Route path="editorial-policy" element={<EditorialPolicy />} />
                   <Route path="terms-and-conditions" element={<TermsAndConditions />} />
                   <Route path="privacy-policy" element={<PrivacyPolicy />} />
+                  <Route path="*" element={<Home />} />
                 </Route>
                 
                 <Route path="/admin" element={<AdminLayout />}>

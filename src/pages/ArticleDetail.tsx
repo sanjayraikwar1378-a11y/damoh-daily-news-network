@@ -8,19 +8,26 @@ import {
   Bookmark, 
   BookmarkCheck, 
   ChevronLeft, 
-  Eye, 
   AlertCircle,
-  Youtube
+  Youtube,
+  BookOpen
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
 import { getYouTubeEmbedUrl } from "@/lib/youtube"
+import { YouTubeEmbedFacade } from "@/components/YouTubeEmbedFacade"
 import { ArticleShareBar } from "@/components/ArticleShareBar"
-import { db, collection, query, where, getDocs } from "@/lib/firebase"
-import { Comment } from "@/data/mock"
+import { db, collection, query, where, getDocs, doc, getDoc } from "@/lib/firebase"
+import { Comment, Article } from "@/data/mock"
 import { getOptimizedImageUrl } from "@/lib/cloudinary"
 import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
+import { ResponsiveImage } from "@/components/ResponsiveImage"
+import { LazySection } from "@/components/LazySection"
+import { getCachedArticle, fetchArticleBySlugOrId, saveArticleToCache } from "@/lib/articleCache"
+import { AuthorByline } from "@/components/AuthorByline"
+import { StickyLatestNewsWidget } from "@/components/StickyLatestNewsWidget"
+import { getReadingTime } from "@/lib/utils"
 
 export function ArticleDetail() {
   const { slug } = useParams<{ slug: string }>()
@@ -76,7 +83,7 @@ export function ArticleDetail() {
   }, [slug])
 
   // Extremely robust article matching logic
-  const article = useMemo(() => {
+  const contextArticle = useMemo(() => {
     if (!slug && !decodedSlug) return undefined
 
     return articles.find(a => {
@@ -107,6 +114,72 @@ export function ArticleDetail() {
       return false
     })
   }, [articles, slug, decodedSlug])
+
+  // Target key (slug or ID)
+  const targetKey = decodedSlug || slug || ""
+
+  // Direct fetch fallback for direct social/Google visitors before context articles load
+  const [directArticle, setDirectArticle] = useState<Article | null>(() => {
+    return getCachedArticle(targetKey) || null
+  })
+  const [isArticleFetchDone, setIsArticleFetchDone] = useState<boolean>(() => {
+    return Boolean(contextArticle || getCachedArticle(targetKey))
+  })
+
+  useEffect(() => {
+    if (contextArticle) {
+      setDirectArticle(contextArticle)
+      saveArticleToCache(contextArticle)
+      setIsArticleFetchDone(true)
+      return
+    }
+
+    if (!targetKey) {
+      setIsArticleFetchDone(true)
+      return
+    }
+
+    const cached = getCachedArticle(targetKey)
+    if (cached) {
+      setDirectArticle(cached)
+      setIsArticleFetchDone(true)
+      return
+    }
+
+    let isMounted = true
+    setIsArticleFetchDone(false)
+
+    fetchArticleBySlugOrId(targetKey).then((art) => {
+      if (isMounted) {
+        if (art) setDirectArticle(art)
+        setIsArticleFetchDone(true)
+      }
+    }).catch(() => {
+      if (isMounted) setIsArticleFetchDone(true)
+    })
+
+    return () => { isMounted = false }
+  }, [contextArticle, targetKey])
+
+  const article = contextArticle || directArticle
+
+  // Preload Hero Image for direct article page arrivals
+  useEffect(() => {
+    if (!article?.imageUrl) return;
+    const heroSrc = getOptimizedImageUrl(article.imageUrl, { width: 800 });
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'image';
+    link.href = heroSrc;
+    // @ts-ignore fetchPriority
+    link.fetchPriority = 'high';
+    document.head.appendChild(link);
+    return () => {
+      if (document.head.contains(link)) {
+        document.head.removeChild(link);
+      }
+    };
+  }, [article?.imageUrl]);
 
   // Ref to prevent multiple view counts on re-renders for the same article ID
   const trackedArticleIdRef = useRef<string | null>(null)
@@ -239,8 +312,8 @@ export function ArticleDetail() {
     return <FirestoreErrorBanner onRetry={retryFirestoreSync} />
   }
 
-  // Loading Skeleton while Firestore is syncing
-  if (!article && isSyncingFirestore) {
+  // Loading Skeleton while requested article document is loading
+  if (!article && !isArticleFetchDone) {
     return (
       <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
         <div className="h-4 w-48 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse" />
@@ -295,12 +368,18 @@ export function ArticleDetail() {
   }
 
   // Safe reporter resolution
-  const reporter = reporters.find(r => r.id === article.reporterId) || reporters[0] || {
-    id: "r1",
-    name: "SANJAY RAIKWAR (संजय रैकवार)",
-    role: "Chief Editor / मुख्य संपादक",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop"
-  }
+  const reporter = reporters.find(r => r.id === article.reporterId) 
+    || reporters.find(r => r.name === (article as any).authorName) 
+    || reporters.find(r => r.name === (article as any).reporterName) 
+    || reporters[0] 
+    || {
+      id: "r1",
+      name: "SANJAY RAIKWAR (संजय रैकवार)",
+      role: "Chief Editor / मुख्य संपादक",
+      avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop"
+    }
+
+  const reporterAvatarUrl = reporter.avatar || (reporter as any).photoUrl || (reporter as any).image || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop"
 
   // Safe category filter
   const articleCategories = categories.filter(c => c && c.id && article.categoryIds?.includes(c.id))
@@ -339,10 +418,10 @@ export function ArticleDetail() {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="container mx-auto px-4 py-8 max-w-4xl"
+      className="container mx-auto px-2.5 sm:px-4 py-3 sm:py-8 max-w-7xl"
     >
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 mb-6 flex-wrap">
+      <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-semibold text-zinc-500 mb-2 sm:mb-6 flex-wrap">
         <Link to="/" className="hover:text-red-600 transition-colors">Home</Link>
         <span>/</span>
         {articleCategories[0] && (
@@ -356,60 +435,63 @@ export function ArticleDetail() {
         <span className="text-zinc-400 line-clamp-1">{article.title}</span>
       </div>
 
-      <article className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+        {/* Main Article Content */}
+        <article className="lg:col-span-8 space-y-3 sm:space-y-6">
+
         {/* Categories Badges */}
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center">
           {articleCategories.map(c => (
             <Link key={c.id} to={`/category/${c.slug}`}>
-              <span className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1 rounded-sm transition-colors">
+              <span className="bg-red-600 hover:bg-red-700 text-white text-[11px] sm:text-xs font-bold px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-sm transition-colors">
                 {c.name}
               </span>
             </Link>
           ))}
           {article.isBreaking && (
-            <span className="bg-amber-500 text-black text-xs font-black px-3 py-1 rounded-sm animate-pulse">
+            <span className="bg-amber-500 text-black text-[11px] sm:text-xs font-black px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-sm animate-pulse">
               BREAKING
             </span>
           )}
           {article.status && article.status !== 'published' && (
-            <span className="bg-zinc-800 text-amber-400 border border-amber-500/50 text-xs font-bold px-2.5 py-0.5 rounded-sm uppercase">
+            <span className="bg-zinc-800 text-amber-400 border border-amber-500/50 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-sm uppercase">
               {article.status} preview
             </span>
           )}
         </div>
 
         {/* Article Title */}
-        <h1 className="text-3xl md:text-5xl font-black text-zinc-900 dark:text-white leading-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-zinc-900 dark:text-white leading-snug sm:leading-tight">
           {article.title}
         </h1>
 
         {/* Excerpt */}
         {article.excerpt && (
-          <p className="text-lg md:text-xl text-zinc-600 dark:text-zinc-300 font-medium leading-relaxed border-l-4 border-red-600 pl-4 py-1">
+          <p className="text-base sm:text-lg md:text-xl text-zinc-600 dark:text-zinc-300 font-medium leading-relaxed border-l-4 border-red-600 pl-3 sm:pl-4 py-0.5 sm:py-1 my-1.5 sm:my-3">
             {article.excerpt}
           </p>
         )}
 
-        {/* Metadata & Actions Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-y border-zinc-200 dark:border-zinc-800">
-          <div className="flex items-center gap-3">
-            <img 
-              src={getOptimizedImageUrl(reporter.avatar, 100) || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&fm=webp"} 
-              alt={reporter.name} 
-              loading="lazy"
-              decoding="async"
-              className="w-12 h-12 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 bg-zinc-100" 
-            />
-            <div>
-              <div className="font-bold text-sm text-zinc-900 dark:text-white">{reporter.name}</div>
-              <div className="text-xs text-zinc-500 flex items-center gap-2">
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {formatDateAgo(article.publishedAt)}
-                </span>
-              </div>
-            </div>
-          </div>
+        {/* Mobile Author Byline (Immediately below title/excerpt) */}
+        <div className="md:hidden py-2 border-y border-zinc-200 dark:border-zinc-800 my-1">
+          <AuthorByline 
+            reporter={reporter} 
+            authorNameFallback={(article as any).authorName || (article as any).reporterName}
+            publishedAt={article.publishedAt} 
+            formatDateAgo={formatDateAgo} 
+            variant="header" 
+          />
+        </div>
+
+        {/* Desktop Metadata & Actions Bar (Unchanged for Desktop) */}
+        <div className="hidden md:flex flex-wrap items-center justify-between gap-4 py-4 border-y border-zinc-200 dark:border-zinc-800">
+          <AuthorByline 
+            reporter={reporter} 
+            authorNameFallback={(article as any).authorName || (article as any).reporterName}
+            publishedAt={article.publishedAt} 
+            formatDateAgo={formatDateAgo} 
+            variant="header" 
+          />
 
           <div className="flex items-center gap-2">
             <Button 
@@ -443,37 +525,69 @@ export function ArticleDetail() {
         </div>
 
         {/* Feature Image */}
-        <figure>
-          <img 
-            src={getOptimizedImageUrl(articleImageUrl, 1200) || undefined} 
+        <figure className="w-full my-1 sm:my-3">
+          <ResponsiveImage 
+            src={articleImageUrl} 
             alt={article.title}
+            type="article"
             loading="eager"
-            decoding="async"
-            className="w-full rounded-xl shadow-sm object-cover max-h-[520px] bg-zinc-100 dark:bg-zinc-900"
+            fetchPriority="high"
+            widths={[360, 480, 720, 1080]}
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 800px"
+            defaultWidth={800}
           />
         </figure>
 
+        {/* Mobile Action Buttons (BELOW Image) */}
+        <div className="md:hidden flex items-center justify-between gap-1.5 py-2 px-0.5 border-b border-zinc-200 dark:border-zinc-800 my-1">
+          <div className="flex items-center gap-1.5">
+            <Button 
+              variant={hasLiked ? "default" : "outline"} 
+              size="sm" 
+              onClick={handleLikeClick}
+              className={`h-8 text-xs px-2.5 rounded-full flex items-center gap-1 transition-colors ${hasLiked ? 'bg-red-600 text-white hover:bg-red-700 border-red-600' : 'text-zinc-700 dark:text-zinc-300 hover:text-red-600'}`}
+            >
+              <ThumbsUp className={`h-3.5 w-3.5 ${hasLiked ? 'fill-current' : ''}`} />
+              <span>{hasLiked ? 'Liked' : 'Like'}</span>
+            </Button>
+
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => toggleBookmark(article.id)}
+              className={`h-8 text-xs px-2.5 rounded-full flex items-center gap-1 ${isBookmarked ? 'text-red-600 border-red-600' : 'text-zinc-700 dark:text-zinc-300'}`}
+            >
+              {isBookmarked ? <BookmarkCheck className="h-3.5 w-3.5 fill-current" /> : <Bookmark className="h-3.5 w-3.5" />}
+              <span>{isBookmarked ? 'Saved' : 'Save'}</span>
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <ArticleShareBar 
+              title={article.title} 
+              imageUrl={articleImageUrl} 
+              variant="compact" 
+            />
+          </div>
+        </div>
+
         {/* Article Body Content */}
-        <div className="prose prose-lg dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed py-4 text-base md:text-lg">
+        <div className="prose prose-lg dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed py-1.5 sm:py-4 text-base md:text-lg">
           {article.content || article.excerpt || "कोई विस्तृत सामग्री उपलब्ध नहीं है।"}
         </div>
 
-        {/* Embedded YouTube Video Player (Responsive) */}
+        {/* Embedded YouTube Video Player (Lazy-loaded Facade) */}
         {article.youtubeUrl && getYouTubeEmbedUrl(article.youtubeUrl) && (
           <div className="my-8 space-y-3">
             <div className="flex items-center gap-2 text-base font-bold text-zinc-900 dark:text-white border-l-4 border-red-600 pl-3">
               <Youtube className="h-5 w-5 text-red-600" />
               <span>विशेष वीडियो रिपोर्ट (Video Coverage)</span>
             </div>
-            <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black shadow-md border border-zinc-200 dark:border-zinc-800">
-              <iframe
-                src={getYouTubeEmbedUrl(article.youtubeUrl) || undefined}
-                title={`${article.title} - Video Report`}
-                className="absolute inset-0 w-full h-full border-0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              />
-            </div>
+            <YouTubeEmbedFacade
+              youtubeUrl={article.youtubeUrl}
+              title={article.title}
+              imageUrl={article.imageUrl}
+            />
           </div>
         )}
 
@@ -508,94 +622,119 @@ export function ArticleDetail() {
           variant="full" 
         />
 
+        {/* Author Bio Section */}
+        <AuthorByline 
+          reporter={reporter} 
+          authorNameFallback={(article as any).authorName || (article as any).reporterName} 
+          variant="bio" 
+          className="my-8" 
+        />
+
         {/* Comments Section */}
-        <div className="pt-10 border-t border-zinc-200 dark:border-zinc-800 space-y-6">
-          <h3 className="text-2xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-            <MessageCircle className="h-6 w-6 text-red-600" /> टिप्पणियां (Comments) ({articleComments.length})
-          </h3>
-
-          {/* Comment Form */}
-          <form onSubmit={handleCommentSubmit} className="space-y-4 bg-zinc-50 dark:bg-zinc-900/50 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
-            <h4 className="font-bold text-sm text-zinc-900 dark:text-white">अपनी राय व्यक्त करें (Post a Comment)</h4>
-            
-            {commentSubmitted && (
-              <div className="p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-md">
-                आपकी टिप्पणी सबमिट कर दी गई है। समीक्षा के बाद प्रकाशित की जाएगी।
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <input 
-                type="text" 
-                placeholder="आपका नाम (Your Name) *" 
-                required
-                value={commentName}
-                onChange={e => setCommentName(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
-              />
-              <input 
-                type="email" 
-                placeholder="ईमेल (Email Optional)" 
-                value={commentEmail}
-                onChange={e => setCommentEmail(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
-              />
-            </div>
-            <textarea 
-              rows={3} 
-              placeholder="आपकी टिप्पणी (Your Comment) *" 
-              required
-              value={commentText}
-              onChange={e => setCommentText(e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
-            />
-            <Button type="submit" className="bg-red-600 hover:bg-red-700 text-white font-bold">
-              टिप्पणी भेजें (Submit Comment)
-            </Button>
-          </form>
-
-          {/* Existing Approved Comments */}
-          <div className="space-y-4">
-            {articleComments.map(c => (
-              <div key={c.id} className="p-4 border border-zinc-200 dark:border-zinc-800 rounded-lg space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-sm text-zinc-900 dark:text-white">{c.userName}</span>
-                  <span className="text-xs text-zinc-400">{formatDateAgo(c.createdAt)}</span>
-                </div>
-                <p className="text-sm text-zinc-700 dark:text-zinc-300">{c.content}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Related News */}
-        {relatedArticles.length > 0 && (
-          <div className="pt-12 border-t border-zinc-200 dark:border-zinc-800">
-            <h3 className="text-2xl font-bold mb-6 text-zinc-900 dark:text-white">
-              संबंधित खबरें (Related News)
+        <LazySection minHeight="250px">
+          <div className="pt-10 border-t border-zinc-200 dark:border-zinc-800 space-y-6">
+            <h3 className="text-2xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+              <MessageCircle className="h-6 w-6 text-red-600" /> टिप्पणियां (Comments) ({articleComments.length})
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {relatedArticles.map(rel => (
-                <Link to={`/article/${rel.slug}`} key={rel.id} className="group flex flex-col gap-2">
-                  <div className="aspect-video rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-900">
-                    <img 
-                      src={rel.imageUrl || "https://images.unsplash.com/photo-1546422904-90eab23c3d7e?w=800&h=500&fit=crop"} 
-                      alt={rel.title}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
+
+            {/* Comment Form */}
+            <form onSubmit={handleCommentSubmit} className="space-y-4 bg-zinc-50 dark:bg-zinc-900/50 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
+              <h4 className="font-bold text-sm text-zinc-900 dark:text-white">अपनी राय व्यक्त करें (Post a Comment)</h4>
+              
+              {commentSubmitted && (
+                <div className="p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-md">
+                  आपकी टिप्पणी सबमिट कर दी गई है। समीक्षा के बाद प्रकाशित की जाएगी।
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <input 
+                  type="text" 
+                  placeholder="आपका नाम (Your Name) *" 
+                  required
+                  value={commentName}
+                  onChange={e => setCommentName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
+                />
+                <input 
+                  type="email" 
+                  placeholder="ईमेल (Email Optional)" 
+                  value={commentEmail}
+                  onChange={e => setCommentEmail(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
+                />
+              </div>
+              <textarea 
+                rows={3} 
+                placeholder="आपकी टिप्पणी (Your Comment) *" 
+                required
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
+              />
+              <Button type="submit" className="bg-red-600 hover:bg-red-700 text-white font-bold">
+                टिप्पणी भेजें (Submit Comment)
+              </Button>
+            </form>
+
+            {/* Existing Approved Comments */}
+            <div className="space-y-4">
+              {articleComments.map(c => (
+                <div key={c.id} className="p-4 border border-zinc-200 dark:border-zinc-800 rounded-lg space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-sm text-zinc-900 dark:text-white">{c.userName}</span>
+                    <span className="text-xs text-zinc-400">{formatDateAgo(c.createdAt)}</span>
                   </div>
-                  <h4 className="font-bold text-sm leading-snug group-hover:text-red-600 transition-colors line-clamp-2">
-                    {rel.title}
-                  </h4>
-                  <span className="text-xs text-zinc-400">
-                    {formatDateAgo(rel.publishedAt)}
-                  </span>
-                </Link>
+                  <p className="text-sm text-zinc-700 dark:text-zinc-300">{c.content}</p>
+                </div>
               ))}
             </div>
           </div>
+        </LazySection>
+
+        {/* Related News */}
+        {relatedArticles.length > 0 && (
+          <LazySection minHeight="250px">
+            <div className="pt-12 border-t border-zinc-200 dark:border-zinc-800">
+              <h3 className="text-2xl font-bold mb-6 text-zinc-900 dark:text-white">
+                संबंधित खबरें (Related News)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {relatedArticles.map(rel => (
+                  <Link to={`/article/${rel.slug}`} key={rel.id} className="group flex flex-col gap-2">
+                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800/60">
+                      <ResponsiveImage 
+                        src={rel.imageUrl} 
+                        alt={rel.title}
+                        type="card"
+                        loading="lazy"
+                        defaultWidth={400}
+                        className="w-full h-full object-cover object-center rounded-lg transition-transform duration-500 group-hover:scale-105"
+                      />
+                    </div>
+                    <h4 className="font-bold text-sm leading-snug group-hover:text-red-600 transition-colors line-clamp-2">
+                      {rel.title}
+                    </h4>
+                    <span className="text-xs text-zinc-400">
+                      {formatDateAgo(rel.publishedAt)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </LazySection>
         )}
+
       </article>
+
+        {/* Sticky Latest News Sidebar (Desktop) / Bottom Feed (Mobile) */}
+        <aside className="lg:col-span-4 space-y-6">
+          <div className="lg:sticky lg:top-20">
+            <StickyLatestNewsWidget currentArticleId={article.id} limit={8} />
+          </div>
+        </aside>
+      </div>
     </motion.div>
+
   )
 }

@@ -14,6 +14,8 @@ export interface Reporter {
   name: string;
   avatar: string;
   role?: string;
+  designation1?: string;
+  designation2?: string;
   email?: string;
   bio?: string;
 }
@@ -136,9 +138,34 @@ export const CATEGORIES: Category[] = [
 ];
 
 export const REPORTERS: Reporter[] = [
-  { id: 'r1', name: 'SANJAY RAIKWAR (संजय रैकवार)', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop', role: 'मुख्य संपादक (Chief Editor)', email: 'sanjay@damohdaily.com', bio: 'वरिष्ठ पत्रकार, 15 वर्षों का अनुभव' },
-  { id: 'r2', name: 'अमित कुमार (Amit Kumar)', avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop', role: 'विशेष संवाददाता (Special Correspondent)', email: 'amit@damohdaily.com', bio: 'क्राइम एवं पॉलिटिकल रिपोर्टिंग विशेषज्ञ' },
-  { id: 'r3', name: 'प्रिया शर्मा (Priya Sharma)', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop', role: 'सब एडिटर (Sub Editor)', email: 'priya@damohdaily.com', bio: 'शिक्षा एवं संस्कृति डेस्क प्रभारी' }
+  { 
+    id: 'r1', 
+    name: 'Sanjay Raikwar', 
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop', 
+    role: 'Founder & Editor, Damoh Daily News', 
+    designation1: 'Founder & Editor, Damoh Daily News', 
+    designation2: 'District Bureau, Dainik Keshariya Hindustan', 
+    email: 'sanjay@damohdaily.com', 
+    bio: '' 
+  },
+  { 
+    id: 'r2', 
+    name: 'Amit Kumar (अमित कुमार)', 
+    avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop', 
+    role: 'Special Correspondent (विशेष संवाददाता)', 
+    designation1: 'Special Correspondent, Damoh Daily News', 
+    email: 'amit@damohdaily.com', 
+    bio: '' 
+  },
+  { 
+    id: 'r3', 
+    name: 'Priya Sharma (प्रिया शर्मा)', 
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop', 
+    role: 'Sub Editor (सब एडिटर)', 
+    designation1: 'Sub Editor, Damoh Daily News', 
+    email: 'priya@damohdaily.com', 
+    bio: '' 
+  }
 ];
 
 export const MOCK_ARTICLES: Article[] = [

@@ -187,27 +187,38 @@ export async function uploadToCloudinary(
 }
 
 /**
- * Adds Cloudinary auto-format (f_auto) and auto-quality (q_auto) flags to any Cloudinary image URL.
+ * Adds Cloudinary auto-format (f_auto), auto-quality (q_auto), dpr_auto, and c_limit flags.
  */
 export function optimizeCloudinaryUrl(
   url: string, 
-  options?: { width?: number; height?: number; crop?: string } | number
+  options?: { width?: number; height?: number; crop?: string; gravity?: string } | number
 ): string {
   if (!url || !url.includes("res.cloudinary.com")) {
     return url;
   }
 
   const opts = typeof options === 'number' ? { width: options } : options;
-  const transformations: string[] = ["f_auto", "q_auto"];
+  const transformations: string[] = ["f_auto", "q_auto", "dpr_auto"];
+  const cropMode = opts?.crop || "limit";
+  transformations.push(`c_${cropMode}`);
+  
+  if (cropMode === 'fill' || cropMode === 'crop') {
+    const gravity = opts?.gravity || 'auto';
+    transformations.push(`g_${gravity}`);
+  }
+
   if (opts?.width) transformations.push(`w_${opts.width}`);
   if (opts?.height) transformations.push(`h_${opts.height}`);
-  if (opts?.crop) transformations.push(`c_${opts.crop}`);
 
   const transformString = transformations.join(",");
 
-  if (url.includes("/upload/f_auto,q_auto/")) return url;
+  if (url.includes("/upload/")) {
+    if (url.includes(`/upload/${transformString}/`)) return url;
+    // Replace existing transformation or insert transformString
+    return url.replace(/\/upload\/(?:[^\/]+\/)?/, `/upload/${transformString}/`);
+  }
 
-  return url.replace("/upload/", `/upload/${transformString}/`);
+  return url;
 }
 
 /**
@@ -216,7 +227,7 @@ export function optimizeCloudinaryUrl(
  */
 export function getOptimizedImageUrl(
   url?: string,
-  options?: { width?: number; height?: number; crop?: string } | number
+  options?: { width?: number; height?: number; crop?: string; gravity?: string } | number
 ): string {
   if (!url || typeof url !== 'string') return '';
 
@@ -229,7 +240,8 @@ export function getOptimizedImageUrl(
 
   // Unsplash Optimization (WebP + Auto format)
   if (url.includes('images.unsplash.com')) {
-    let opt = url.includes('?') ? `${url}&auto=format&fit=crop&q=80` : `${url}?auto=format&fit=crop&q=80`;
+    const cropParam = opts?.crop === 'fill' || !opts?.crop ? 'fit=crop' : 'fit=max';
+    let opt = url.includes('?') ? `${url}&auto=format&${cropParam}&q=80` : `${url}?auto=format&${cropParam}&q=80`;
     if (opts?.width && !url.includes('w=')) {
       opt += `&w=${opts.width}`;
     }
@@ -240,4 +252,19 @@ export function getOptimizedImageUrl(
   }
 
   return url;
+}
+
+/**
+ * Generates a responsive srcset string for Cloudinary/Unsplash/External images.
+ * Default widths optimized for mobile phones up to desktop: [360, 480, 720, 1080].
+ */
+export function getOptimizedSrcSet(
+  url?: string,
+  widths: number[] = [360, 480, 720, 1080],
+  crop: string = 'limit'
+): string {
+  if (!url || typeof url !== 'string') return '';
+  return widths
+    .map(w => `${getOptimizedImageUrl(url, { width: w, crop })} ${w}w`)
+    .join(', ');
 }

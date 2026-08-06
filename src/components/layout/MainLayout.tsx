@@ -1,5 +1,6 @@
 import { Outlet, Link } from "react-router-dom"
 import { Header } from "./Header"
+import { BreakingNewsTicker } from "../BreakingNewsTicker"
 import { useNews } from "@/context/NewsContext"
 import { Mail, Phone, MapPin, MessageSquare, Facebook, Twitter, Instagram, Youtube, Send } from "lucide-react"
 
@@ -9,6 +10,7 @@ export function MainLayout() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col font-sans text-zinc-900 dark:text-zinc-50">
       <Header />
+      <BreakingNewsTicker />
       <main className="flex-1">
         <Outlet />
       </main>
@@ -113,6 +115,8 @@ export function MainLayout() {
             <h4 className="text-white font-bold text-sm sm:text-base mb-3 sm:mb-4 border-b border-zinc-800 pb-2">लिंक्स (Quick Links)</h4>
             <ul className="text-xs sm:text-sm space-y-2">
               <li><Link to="/" className="hover:text-white transition-colors">Home (मुख्य पृष्ठ)</Link></li>
+              <li><Link to="/latest-news" className="hover:text-white transition-colors font-bold text-red-500">Latest News (लेटेस्ट न्यूज़)</Link></li>
+              <li><Link to="/about" className="hover:text-white transition-colors">About Us (हमारे बारे में)</Link></li>
               <li><Link to="/contact" className="hover:text-white transition-colors">Contact Us (संपर्क करें)</Link></li>
               <li><Link to="/bookmarks" className="hover:text-white transition-colors">Bookmarked Articles</Link></li>
               <li><Link to="/admin" className="hover:text-red-400 transition-colors font-bold text-red-500">Admin CMS Dashboard</Link></li>
@@ -136,6 +140,8 @@ export function MainLayout() {
         <div className="container mx-auto px-4 max-w-7xl mt-8 pt-6 border-t border-zinc-800 text-xs text-zinc-500 flex flex-col md:flex-row justify-between items-center gap-4">
           <span>&copy; {new Date().getFullYear()} {siteSettings.siteName || 'Damoh Daily News Network'}. All rights reserved.</span>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-zinc-400 text-[11px]">
+            <Link to="/about" className="hover:text-white transition-colors font-medium">About Us</Link>
+            <span>•</span>
             <Link to="/disclaimer" className="hover:text-white transition-colors">Disclaimer</Link>
             <span>•</span>
             <Link to="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link>

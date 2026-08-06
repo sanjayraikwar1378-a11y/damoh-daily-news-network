@@ -24,6 +24,7 @@ import {
   query, 
   orderBy, 
   where,
+  limit,
   serverTimestamp 
 } from "firebase/firestore";
 // Read Firebase config from environment variables or project defaults
@@ -70,6 +71,7 @@ export {
   query, 
   orderBy, 
   where,
+  limit,
   serverTimestamp 
 };
 

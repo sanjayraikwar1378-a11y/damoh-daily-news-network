@@ -282,7 +282,7 @@ export function AdminNews() {
                           <img 
                             src={article.imageUrl || undefined} 
                             alt={article.title} 
-                            className="w-16 h-12 rounded object-cover flex-shrink-0 bg-zinc-100" 
+                            className="w-16 h-12 rounded object-cover flex-shrink-0 bg-zinc-100 dark:bg-zinc-800" 
                           />
                           <div>
                             <Link to={`/admin/edit/${article.id}`} className="font-bold text-zinc-900 dark:text-white hover:text-red-600 line-clamp-2 transition-colors">

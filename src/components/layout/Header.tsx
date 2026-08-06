@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { Search, Menu, Sun, Moon, MapPin, ChevronDown, Bookmark, X, Home as HomeIcon, Shield, Sparkles, ExternalLink, Flame, Newspaper, PhoneCall, Clock, Mail, MessageSquare, Phone } from "lucide-react"
+import { Search, Menu, Sun, Moon, MapPin, ChevronDown, Bookmark, X, Home as HomeIcon, Shield, Sparkles, ExternalLink, Flame, Newspaper, PhoneCall, Clock, Mail, MessageSquare, Phone, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
 import { useNews } from "@/context/NewsContext"
@@ -153,33 +153,33 @@ export function Header() {
       </div>
       
       {/* Main Header Bar */}
-      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-16 flex items-center justify-between relative">
-        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
-          {/* Hamburger Menu Toggle button with min 44px touch target */}
+      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-13 sm:h-16 flex items-center justify-between relative">
+        <div className="flex items-center gap-1 sm:gap-3 min-w-0">
+          {/* Hamburger Menu Toggle button with touch target */}
           <button 
             type="button"
-            className="lg:hidden min-h-[44px] min-w-[44px] h-11 w-11 flex items-center justify-center rounded-lg text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0" 
+            className="lg:hidden min-h-[38px] min-w-[38px] h-9 w-9 sm:h-11 sm:w-11 flex items-center justify-center rounded-lg text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0" 
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open Navigation Drawer"
           >
-            <Menu className="h-6 w-6" />
+            <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
           </button>
 
           {/* Full Responsive Brand Logo */}
-          <Link to="/" className="flex items-center gap-2 group min-w-0 py-1">
+          <Link to="/" className="flex items-center gap-2 group min-w-0 py-0.5 sm:py-1">
             {siteSettings.logoUrl && siteSettings.logoUrl.trim() ? (
-              <img src={siteSettings.logoUrl} alt={siteSettings.siteName || "Logo"} className="h-9 sm:h-10 object-contain" />
+              <img src={siteSettings.logoUrl} alt={siteSettings.siteName || "Logo"} className="h-8 sm:h-10 object-contain" />
             ) : (
               <div className="flex flex-col justify-center leading-none min-w-0 select-none">
                 <div className="flex items-center gap-1">
-                  <span className="text-lg xs:text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-red-600 group-hover:text-red-700 transition-colors">
+                  <span className="text-base xs:text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-red-600 group-hover:text-red-700 transition-colors">
                     DAMOH
                   </span>
-                  <span className="text-lg xs:text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-zinc-900 dark:text-white">
+                  <span className="text-base xs:text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-zinc-900 dark:text-white">
                     DAILY
                   </span>
                 </div>
-                <span className="text-[8px] xs:text-[9px] sm:text-[10px] md:text-[11px] font-extrabold tracking-[0.14em] xs:tracking-[0.18em] sm:tracking-[0.25em] text-red-600 dark:text-red-500 uppercase mt-0.5 whitespace-nowrap">
+                <span className="text-[7px] xs:text-[9px] sm:text-[10px] md:text-[11px] font-extrabold tracking-[0.12em] xs:tracking-[0.18em] sm:tracking-[0.25em] text-red-600 dark:text-red-500 uppercase mt-0.5 whitespace-nowrap">
                   NEWS NETWORK
                 </span>
               </div>
@@ -189,6 +189,18 @@ export function Header() {
         
         {/* Desktop Category Nav */}
         <nav className="hidden lg:flex items-center gap-1 relative">
+          <Link
+            to="/latest-news"
+            className={`px-3 py-2 rounded-md text-xs font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+              location.pathname === "/latest-news" 
+                ? "text-white bg-red-600 shadow-sm" 
+                : "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white"
+            }`}
+          >
+            <Flame className="h-3.5 w-3.5 fill-current" />
+            <span>लेटेस्ट न्यूज़</span>
+          </Link>
+
           {visibleCategories.map(category => (
             <Link
               key={category.id}
@@ -327,6 +339,35 @@ export function Header() {
                 >
                   <HomeIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                   <span>होम पेज (Home)</span>
+                </Link>
+
+                <Link
+                  to="/latest-news"
+                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-colors min-h-[44px] ${
+                    location.pathname === '/latest-news' 
+                      ? 'bg-red-600 text-white shadow-sm' 
+                      : 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60'
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Flame className="h-4 w-4 text-red-500 fill-current" />
+                    <span>लेटेस्ट न्यूज़ (Latest News)</span>
+                  </span>
+                  <span className="bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    LIVE
+                  </span>
+                </Link>
+
+                <Link
+                  to="/about"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-colors min-h-[44px] ${
+                    location.pathname === '/about' || location.pathname === '/about-us'
+                      ? 'bg-red-600 text-white shadow-sm' 
+                      : 'hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-800 dark:text-zinc-200'
+                  }`}
+                >
+                  <Building2 className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+                  <span>हमारे बारे में (About Us)</span>
                 </Link>
 
                 <Link

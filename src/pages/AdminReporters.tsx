@@ -7,6 +7,7 @@ import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
 import { Reporter } from "@/data/mock"
 import { uploadToCloudinary } from "@/lib/cloudinary"
+import { enrichReporter } from "@/lib/reporterUtils"
 
 export function AdminReporters() {
   const { reporters, articles, addReporter, updateReporter, deleteReporter } = useNews()
@@ -14,11 +15,15 @@ export function AdminReporters() {
   const [isEditing, setIsEditing] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
   const [editRole, setEditRole] = useState("")
+  const [editDesignation1, setEditDesignation1] = useState("")
+  const [editDesignation2, setEditDesignation2] = useState("")
   const [editAvatar, setEditAvatar] = useState("")
   const [editEmail, setEditEmail] = useState("")
 
   const [newName, setNewName] = useState("")
   const [newRole, setNewRole] = useState("संवाददाता (Reporter)")
+  const [newDesignation1, setNewDesignation1] = useState("")
+  const [newDesignation2, setNewDesignation2] = useState("")
   const [newAvatar, setNewAvatar] = useState("")
   const [newEmail, setNewEmail] = useState("")
 
@@ -57,20 +62,27 @@ export function AdminReporters() {
     addReporter({
       name: newName.trim(),
       role: newRole,
+      designation1: newDesignation1.trim() || newRole,
+      designation2: newDesignation2.trim(),
       avatar: newAvatar.trim() || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
       email: newEmail.trim()
     })
 
     setNewName("")
+    setNewDesignation1("")
+    setNewDesignation2("")
     setNewAvatar("")
     setNewEmail("")
   }
 
   const startEdit = (r: Reporter) => {
+    const enriched = enrichReporter(r)
     setIsEditing(r.id)
-    setEditName(r.name)
-    setEditRole(r.role || "")
-    setEditAvatar(r.avatar || "")
+    setEditName(enriched.name)
+    setEditRole(r.role || enriched.designation1 || "")
+    setEditDesignation1(enriched.designation1 || "")
+    setEditDesignation2(enriched.designation2 || "")
+    setEditAvatar(r.avatar || enriched.avatar || "")
     setEditEmail(r.email || "")
   }
 
@@ -79,6 +91,8 @@ export function AdminReporters() {
     updateReporter(id, {
       name: editName.trim(),
       role: editRole,
+      designation1: editDesignation1.trim() || editRole,
+      designation2: editDesignation2.trim(),
       avatar: editAvatar,
       email: editEmail
     })
@@ -120,11 +134,20 @@ export function AdminReporters() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-zinc-500">Designation / Role</label>
+                  <label className="text-xs font-semibold uppercase text-zinc-500">Primary Designation / Title</label>
                   <Input 
-                    value={newRole}
-                    onChange={e => setNewRole(e.target.value)}
-                    placeholder="e.g. वरिष्ठ संवाददाता (Senior Reporter)" 
+                    value={newDesignation1}
+                    onChange={e => setNewDesignation1(e.target.value)}
+                    placeholder="e.g. Founder & Editor, Damoh Daily News" 
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase text-zinc-500">Secondary Credential / Designation (Optional)</label>
+                  <Input 
+                    value={newDesignation2}
+                    onChange={e => setNewDesignation2(e.target.value)}
+                    placeholder="e.g. District Bureau, Dainik Keshariya Hindustan" 
                   />
                 </div>
 
@@ -183,6 +206,7 @@ export function AdminReporters() {
             </CardHeader>
             <CardContent className="space-y-4">
               {reporters.map(r => {
+                const enriched = enrichReporter(r)
                 const reporterArticles = articles.filter(a => a.reporterId === r.id)
                 const totalViews = reporterArticles.reduce((acc, curr) => acc + (curr.views || 0), 0)
 
@@ -190,9 +214,10 @@ export function AdminReporters() {
                   <div key={r.id} className="p-4 border rounded-xl bg-zinc-50 dark:bg-zinc-900/50 space-y-3">
                     {isEditing === r.id ? (
                       <div className="space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Full Name" />
-                          <Input value={editRole} onChange={e => setEditRole(e.target.value)} placeholder="Role / Designation" />
+                          <Input value={editDesignation1} onChange={e => setEditDesignation1(e.target.value)} placeholder="Designation Line 1" />
+                          <Input value={editDesignation2} onChange={e => setEditDesignation2(e.target.value)} placeholder="Designation Line 2" />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <Input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="Email" />
@@ -220,11 +245,16 @@ export function AdminReporters() {
                     ) : (
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
-                          <img src={r.avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"} alt={r.name} className="w-14 h-14 rounded-full object-cover border-2 border-red-600" />
+                          <img src={enriched.avatar || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"} alt={enriched.name} className="w-14 h-14 rounded-full object-cover border-2 border-red-600 shrink-0" />
                           <div>
-                            <h4 className="font-bold text-base text-zinc-900 dark:text-white">{r.name}</h4>
-                            <p className="text-xs font-semibold text-red-600">{r.role || 'Reporter'}</p>
-                            <p className="text-xs text-zinc-400">{r.email || 'No email set'}</p>
+                            <h4 className="font-extrabold text-base text-zinc-900 dark:text-white">{enriched.name}</h4>
+                            {enriched.designation1 && (
+                              <p className="text-xs font-bold text-red-600 dark:text-red-400">{enriched.designation1}</p>
+                            )}
+                            {enriched.designation2 && (
+                              <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{enriched.designation2}</p>
+                            )}
+                            <p className="text-[11px] text-zinc-400 dark:text-zinc-500">{r.email || 'No email set'}</p>
                           </div>
                         </div>
 

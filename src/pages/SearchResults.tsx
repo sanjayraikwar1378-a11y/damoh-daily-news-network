@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useSearchParams, Link } from "react-router-dom"
 import { useNews } from "@/context/NewsContext"
 import { motion } from "motion/react"
@@ -6,6 +6,7 @@ import { Clock, ChevronDown } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { getOptimizedImageUrl } from "@/lib/cloudinary"
 import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
+import { ResponsiveImage } from "@/components/ResponsiveImage"
 
 export function SearchResults() {
   const [searchParams] = useSearchParams()
@@ -18,16 +19,19 @@ export function SearchResults() {
     setVisibleCount(6)
   }, [query])
 
-  const searchResults = articles.filter(a => {
-    if (!a) return false
+  const searchResults = useMemo(() => {
+    if (!query.trim()) return []
     const q = query.toLowerCase()
-    const titleMatch = (a.title || "").toLowerCase().includes(q)
-    const excerptMatch = (a.excerpt || "").toLowerCase().includes(q)
-    const contentMatch = (a.content || "").toLowerCase().includes(q)
-    return titleMatch || excerptMatch || contentMatch
-  })
+    return articles.filter(a => {
+      if (!a || (a.status || 'published') !== 'published') return false
+      const titleMatch = (a.title || "").toLowerCase().includes(q)
+      const excerptMatch = (a.excerpt || "").toLowerCase().includes(q)
+      const contentMatch = (a.content || "").toLowerCase().includes(q)
+      return titleMatch || excerptMatch || contentMatch
+    })
+  }, [articles, query])
 
-  const visibleResults = searchResults.slice(0, visibleCount)
+  const visibleResults = useMemo(() => searchResults.slice(0, visibleCount), [searchResults, visibleCount])
 
   // Infinite Scroll Trigger
   useEffect(() => {
@@ -97,12 +101,13 @@ export function SearchResults() {
             {visibleResults.map(article => (
               <Link to={`/article/${article.slug}`} key={article.id} className="group flex flex-col gap-3">
                 <div className="relative aspect-video rounded-xl overflow-hidden shadow-sm bg-zinc-100 dark:bg-zinc-800">
-                  <img 
-                    src={getOptimizedImageUrl(article.imageUrl, 500) || undefined} 
+                  <ResponsiveImage 
+                    src={article.imageUrl} 
                     alt={article.title}
+                    type="card"
                     loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    defaultWidth={480}
+                    className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
                   />
                 </div>
                 <h3 className="font-bold text-lg leading-tight group-hover:text-red-600 transition-colors">
