@@ -27,5 +27,48 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api"
+    },
+    {
+      "source": "/rss.xml",
+      "destination": "/api"
+    },
+    {
+      "source": "/rss",
+      "destination": "/api"
+    },
+    {
+      "source": "/feed.xml",
+      "destination": "/api"
+    },
+    {
+      "source": "/social-preview.jpg",
+      "destination": "/api"
+    },
+    {
+      "source": "/firebase-applet-config.json",
+      "destination": "/api"
+    },
+    {
+      "source": "/article/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
+
