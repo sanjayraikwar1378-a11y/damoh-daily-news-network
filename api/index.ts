@@ -48,42 +48,59 @@ function parseFirestoreFields(fields: Record<string, any>): Record<string, any> 
     else if ('arrayValue' in val) {
       result[key] = (val.arrayValue.values || []).map((v: any) => v.stringValue || v);
     }
+    else if ('mapValue' in val) {
+      result[key] = parseFirestoreFields(val.mapValue.fields || {});
+    }
   }
   return result;
 }
 
 async function getArticleBySlug(slugInput: string): Promise<Record<string, any> | null> {
   if (!slugInput) return null;
-  const cleanSlug = slugInput.trim().split('?')[0].split('#')[0];
+  const rawClean = slugInput.trim().split('?')[0].split('#')[0];
+  const cleanSlug = rawClean.replace(/\.jpg$/i, "");
+  let decodedSlug = cleanSlug;
+  try {
+    decodedSlug = decodeURIComponent(cleanSlug);
+  } catch (e) {
+    // ignore decode error
+  }
+
   const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
 
   try {
     const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
-    const response = await fetch(queryUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        structuredQuery: {
-          from: [{ collectionId: "articles" }],
-          where: {
-            fieldFilter: {
-              field: { fieldPath: "slug" },
-              op: "EQUAL",
-              value: { stringValue: cleanSlug }
-            }
-          },
-          limit: 1
-        }
-      })
-    });
+    
+    // Attempt 1: Match by exact slug or decoded slug
+    const slugsToTry = Array.from(new Set([cleanSlug, decodedSlug]));
+    for (const slugTry of slugsToTry) {
+      const response = await fetch(queryUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: "articles" }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: "slug" },
+                op: "EQUAL",
+                value: { stringValue: slugTry }
+              }
+            },
+            limit: 1
+          }
+        })
+      });
 
-    if (response.ok) {
-      const results = await response.json();
-      if (Array.isArray(results) && results[0]?.document?.fields) {
-        return parseFirestoreFields(results[0].document.fields);
+      if (response.ok) {
+        const results = await response.json();
+        if (Array.isArray(results) && results[0]?.document?.fields) {
+          return parseFirestoreFields(results[0].document.fields);
+        }
       }
     }
 
+    // Attempt 2: Match by Document ID if slug contains article ID (e.g. a1785337946908)
     const docIdMatch = cleanSlug.match(/a\d+/);
     const docId = docIdMatch ? docIdMatch[0] : cleanSlug;
 
@@ -101,7 +118,7 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
 
   // Fallback to sample mock articles if firestore returns null
   const mockMatch = MOCK_ARTICLES_FALLBACK.find(
-    a => a.slug === cleanSlug || a.id === cleanSlug
+    a => a.slug === cleanSlug || a.id === cleanSlug || a.slug === decodedSlug
   );
   if (mockMatch) return mockMatch;
 
@@ -142,48 +159,40 @@ function stripTags(str: string): string {
   return str.replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
 }
 
-function cleanImageUrl(rawUrl: any, baseUrl: string): string {
-  const defaultSocialImage = `${baseUrl}/social-preview.jpg`;
-
-  if (!rawUrl || typeof rawUrl !== "string") {
-    return defaultSocialImage;
+function getArticleImageUrl(article: Record<string, any> | null, slug: string, baseUrl: string): string {
+  if (!article) {
+    return `${baseUrl}/social-preview.jpg`;
   }
 
-  let url = rawUrl.trim();
-  if (!url) return defaultSocialImage;
+  const rawImage = article.imageUrl || article.ogImage || article.featuredImage || article.image || article.photoUrl;
 
-  // STRICT RULE: Reject any Base64 or data URIs immediately.
-  // Social crawlers (WhatsApp, Facebook, Twitter, Telegram, LinkedIn) cannot fetch Base64 data URIs.
-  if (url.toLowerCase().startsWith("data:") || url.toLowerCase().includes("base64")) {
-    return defaultSocialImage;
+  // 1. Base64 Data URI -> Serve via binary image route
+  if (rawImage && typeof rawImage === "string" && rawImage.toLowerCase().startsWith("data:")) {
+    return `${baseUrl}/api/article-image/${slug}.jpg`;
   }
 
-  if (url.startsWith("//")) {
-    url = `https:${url}`;
-  } else if (url.startsWith("/")) {
-    url = `${baseUrl}${url}`;
-  } else if (url.startsWith("http://")) {
-    url = `https://${url.slice(7)}`;
-  } else if (url.startsWith("https://")) {
-    // Valid absolute HTTPS URL
-  } else if (url.includes("cloudinary.com") || url.includes("res.cloudinary.com") || url.includes("unsplash.com") || url.includes(".")) {
-    url = `https://${url}`;
-  } else {
-    return defaultSocialImage;
+  // 2. Direct HTTP/HTTPS Image URL
+  if (rawImage && typeof rawImage === "string" && rawImage.trim()) {
+    let url = rawImage.trim();
+    if (url.startsWith("//")) url = `https:${url}`;
+    else if (url.startsWith("/")) url = `${baseUrl}${url}`;
+    else if (url.startsWith("http://")) url = `https://${url.slice(7)}`;
+
+    if (url.startsWith("https://") && !url.toLowerCase().includes("data:")) {
+      return url.replace(/&amp;/g, "&");
+    }
   }
 
-  // Ensure &amp; is converted to plain & in image query params so crawlers can fetch the image
-  url = url.replace(/&amp;/g, "&");
-
-  // Remove single or double quotes
-  url = url.replace(/["']/g, "");
-
-  // Final check: MUST start with https:// and MUST NOT contain data:
-  if (!url.startsWith("https://") || url.toLowerCase().includes("data:")) {
-    return defaultSocialImage;
+  // 3. YouTube Thumbnail fallback
+  if (article.youtubeUrl && typeof article.youtubeUrl === "string") {
+    const ytMatch = article.youtubeUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+    if (ytMatch && ytMatch[1]) {
+      return `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+    }
   }
 
-  return url;
+  // 4. Fallback default image
+  return `${baseUrl}/social-preview.jpg`;
 }
 
 function generateRobotsTxt(baseUrl: string): string {
@@ -265,7 +274,7 @@ async function generateRssFeedXml(baseUrl: string): Promise<string> {
     const desc = escapeHtml(stripTags(art.excerpt || art.content || title));
     const articleUrl = `${baseUrl}/article/${articleSlug}`;
     const author = escapeHtml(art.authorName || "Damoh Daily News");
-    const image = cleanImageUrl(art.imageUrl, baseUrl);
+    const image = getArticleImageUrl(art, articleSlug, baseUrl);
 
     itemsXml += `
     <item>
@@ -328,15 +337,14 @@ function getHtmlTemplate(): string {
 </html>`;
 }
 
-function injectArticleMetaTags(html: string, article: Record<string, any>, fullUrl: string, baseUrl: string): string {
+function injectArticleMetaTags(html: string, article: Record<string, any>, fullUrl: string, baseUrl: string, slug: string): string {
   const rawTitle = article.title ? String(article.title).trim() : "Damoh Daily News";
   const cleanTitle = escapeHtml(rawTitle);
 
   const rawExcerpt = article.excerpt || article.content || "दमोह और मध्य प्रदेश की ताज़ा और प्रामाणिक ख़बरें";
   const description = escapeHtml(stripTags(rawExcerpt).slice(0, 200));
 
-  const rawImage = article.imageUrl || article.featuredImage || article.image || article.photoUrl;
-  const imageUrl = cleanImageUrl(rawImage, baseUrl);
+  const imageUrl = getArticleImageUrl(article, slug, baseUrl);
 
   const author = article.authorName ? escapeHtml(String(article.authorName)) : "Damoh Daily News";
   const publishedTime = article.publishedAt || new Date().toISOString();
@@ -441,7 +449,7 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
 function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): string {
   const title = "Damoh Daily News - दमोह और मध्य प्रदेश की ताज़ा ख़बरें";
   const description = "दमोह और मध्य प्रदेश की विश्वसनीय, सटीक और ताज़ा खबरें। राजनीति, अपराध, समाज, मौसम और स्थानीय समाचार।";
-  const imageUrl = cleanImageUrl(null, baseUrl);
+  const imageUrl = getArticleImageUrl(null, "", baseUrl);
   const canonicalUrl = escapeHtml(fullUrl);
 
   const jsonLdOrganization = {
@@ -594,6 +602,65 @@ export function createExpressApp() {
     res.redirect(302, DEFAULT_SHARE_IMAGE);
   });
 
+  // Serve binary article image for social crawlers (WhatsApp, Facebook, Twitter, Telegram)
+  app.get(["/api/article-image/:slug", "/api/article-image/:slug.jpg", "/api/article-image/*"], async (req, res) => {
+    try {
+      let rawSlug = req.params.slug || req.params[0] || req.path.replace(/^\/api\/article-image\//, "") || "";
+      let slug = rawSlug.replace(/\.jpg$/i, "");
+      if (slug.startsWith("article-image/")) {
+        slug = slug.replace(/^article-image\//, "");
+      }
+      const article = await getArticleBySlug(slug);
+
+      if (article) {
+        const rawImage = article.imageUrl || article.ogImage || article.featuredImage || article.image || article.photoUrl;
+
+        // 1. Handle Base64 Data URIs
+        if (rawImage && typeof rawImage === "string" && rawImage.toLowerCase().startsWith("data:")) {
+          const match = rawImage.match(/^data:(image\/[a-zA-Z+-]+);base64,(.+)$/);
+          if (match) {
+            const mimeType = match[1];
+            const base64Data = match[2];
+            const imgBuffer = Buffer.from(base64Data, "base64");
+
+            res.setHeader("Content-Type", mimeType);
+            res.setHeader("Content-Length", imgBuffer.length);
+            res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+            return res.status(200).send(imgBuffer);
+          }
+        }
+
+        // 2. Handle HTTP/HTTPS URLs
+        if (rawImage && typeof rawImage === "string" && rawImage.trim() && !rawImage.toLowerCase().startsWith("data:")) {
+          let url = rawImage.trim();
+          if (url.startsWith("//")) url = `https:${url}`;
+          if (url.startsWith("http://")) url = `https://${url.slice(7)}`;
+          if (url.startsWith("https://")) {
+            res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+            return res.redirect(302, url);
+          }
+        }
+
+        // 3. Handle YouTube Shorts / Video Thumbnails
+        if (article.youtubeUrl && typeof article.youtubeUrl === "string") {
+          const ytMatch = article.youtubeUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+          if (ytMatch && ytMatch[1]) {
+            res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+            return res.redirect(302, `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`);
+          }
+        }
+      }
+
+      // 4. Default fallback
+      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+      return res.redirect(302, DEFAULT_SHARE_IMAGE);
+    } catch (err) {
+      console.error("Error serving article image:", err);
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.redirect(302, DEFAULT_SHARE_IMAGE);
+    }
+  });
+
   // SEO Routes for Google Search Console, Google News, and Web Crawlers
   app.get("/robots.txt", (req, res) => {
     const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
@@ -645,7 +712,7 @@ export function createExpressApp() {
 
       const htmlTemplate = getHtmlTemplate();
       const finalHtml = article
-        ? injectArticleMetaTags(htmlTemplate, article, fullUrl, baseUrl)
+        ? injectArticleMetaTags(htmlTemplate, article, fullUrl, baseUrl, slug)
         : injectDefaultMetaTags(htmlTemplate, fullUrl, baseUrl);
 
       res.setHeader("Content-Type", "text/html; charset=utf-8");

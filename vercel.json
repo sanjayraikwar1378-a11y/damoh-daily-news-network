@@ -30,6 +30,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/article-image/(.*)",
+      "destination": "/api"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api"
     },
