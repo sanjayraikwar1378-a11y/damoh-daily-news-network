@@ -5,6 +5,7 @@
 
 import { lazy, Suspense } from "react"
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
+import { Analytics } from "@vercel/analytics/react"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { MainLayout } from "./components/layout/MainLayout"
 import { AdminLayout } from "./components/layout/AdminLayout"
@@ -101,6 +102,7 @@ export default function App() {
               </Routes>
             </Suspense>
           </Router>
+          <Analytics />
         </NewsProvider>
       </WeatherProvider>
     </ErrorBoundary>
