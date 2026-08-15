@@ -6,6 +6,10 @@
   --font-sans: "Noto Sans Devanagari", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --animate-marquee: marquee 25s linear infinite;
 
+  /* Small-phone breakpoint. Used throughout Header/Ticker/Nav for tighter
+     control over the 360-400px width range common on budget Android phones. */
+  --breakpoint-xs: 400px;
+
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
@@ -90,6 +94,63 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Consistent, visible keyboard focus ring across the site (native
+     :focus-visible so mouse/touch users don't see it on click). */
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: hsl(var(--primary) / 0.25);
   }
 }
+
+@layer utilities {
+  /* Hides scrollbars for horizontally-scrolling strips (category chips,
+     ticker meta bar) while keeping them scrollable/swipeable on touch. */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Slim, low-contrast scrollbar for the mobile nav drawer and admin sidebar
+     so long lists don't show a heavy default OS scrollbar. */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+  }
+
+  /* Respect reduced-motion preferences for the breaking-news marquee and
+     other decorative motion instead of forcing it on everyone. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-marquee,
+    .animate-pulse,
+    .animate-bounce,
+    .animate-ping {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
+
 

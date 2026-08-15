@@ -12,6 +12,7 @@ import {
 } from "firebase/auth";
 import { 
   getFirestore, 
+  initializeFirestore,
   collection, 
   doc, 
   getDocs, 
@@ -45,11 +46,24 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Initialize Firestore (using custom database ID if specified in config)
+// Initialize Firestore (using custom database ID if specified in config) with auto long-polling for network resilience
 const databaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || "(default)";
-export const db = databaseId && databaseId !== "(default)" 
-  ? getFirestore(app, databaseId) 
-  : getFirestore(app);
+const firestoreSettings = {
+  experimentalAutoDetectLongPolling: true
+};
+
+let firestoreInstance;
+try {
+  firestoreInstance = databaseId && databaseId !== "(default)"
+    ? initializeFirestore(app, firestoreSettings, databaseId)
+    : initializeFirestore(app, firestoreSettings);
+} catch {
+  firestoreInstance = databaseId && databaseId !== "(default)"
+    ? getFirestore(app, databaseId)
+    : getFirestore(app);
+}
+
+export const db = firestoreInstance;
 
 export type { User };
 export { 

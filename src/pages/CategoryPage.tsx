@@ -18,7 +18,9 @@ export function CategoryPage() {
   const category = useMemo(() => categories.find(c => c.slug === slug), [categories, slug])
   const categoryArticles = useMemo(() => {
     if (!category) return []
-    return articles.filter(a => (a.status || 'published') === 'published' && a.categoryIds?.includes(category.id))
+    return articles
+      .filter(a => (a.status || 'published') === 'published' && a.categoryIds?.includes(category.id))
+      .sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime())
   }, [category, articles])
   const visibleArticles = useMemo(() => categoryArticles.slice(0, visibleCount), [categoryArticles, visibleCount])
 

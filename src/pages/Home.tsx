@@ -17,7 +17,7 @@ import { getReadingTime, isWithin2Hours } from '@/lib/utils'
 
 
 export function Home() {
-  const { articles, categories, reporters, adSettings, toggleBookmark, bookmarks, marketRates, siteSettings, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
+  const { articles, categories, reporters, adSettings, toggleBookmark, bookmarks, marketRates, siteSettings, hasArticlesLoaded, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
 
   const formatDateSafe = (dateStr?: string) => {
     if (!dateStr) return "हाल ही में"
@@ -30,9 +30,11 @@ export function Home() {
     }
   }
 
-  // Published articles only
+  // Published articles sorted newest first
   const publishedArticles = useMemo(() => {
-    return articles.filter(a => (a.status || 'published') === 'published')
+    return articles
+      .filter(a => (a.status || 'published') === 'published')
+      .sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime())
   }, [articles])
 
   const breakingNews = useMemo(() => publishedArticles.filter(a => a.isBreaking), [publishedArticles])
@@ -77,31 +79,13 @@ export function Home() {
       : [...videoArticlesList, ...publishedArticles.filter(a => !videoArticlesList.some(va => va.id === a.id))].slice(0, 3)
   }, [publishedArticles])
 
-  // Preload Hero Image for faster Mobile LCP
-  useEffect(() => {
-    if (!heroArticle?.imageUrl) return;
-    const heroSrc = getOptimizedImageUrl(heroArticle.imageUrl, { width: 720 });
-    const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'image';
-    link.href = heroSrc;
-    // @ts-ignore fetchPriority
-    link.fetchPriority = 'high';
-    document.head.appendChild(link);
-    return () => {
-      if (document.head.contains(link)) {
-        document.head.removeChild(link);
-      }
-    };
-  }, [heroArticle?.imageUrl]);
-
-  // Friendly error state if Firestore sync failed or timed out
-  if (firestoreSyncError && publishedArticles.length === 0) {
+  // Friendly error state if Firestore sync failed and no articles are available
+  if (firestoreSyncError && publishedArticles.length === 0 && !hasArticlesLoaded) {
     return <FirestoreErrorBanner onRetry={retryFirestoreSync} />
   }
 
-  // Skeleton state while syncing from Firestore
-  if (isSyncingFirestore && publishedArticles.length === 0) {
+  // State A (Loading): Initial fetch is still in progress and no articles in memory/storage
+  if ((!hasArticlesLoaded || isSyncingFirestore) && publishedArticles.length === 0) {
     return (
       <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 max-w-7xl space-y-8">
         <div className="h-10 bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse" />
@@ -136,8 +120,8 @@ export function Home() {
     )
   }
 
-  // Clean empty state if Firestore sync completed successfully with 0 published articles
-  if (!isSyncingFirestore && !firestoreSyncError && publishedArticles.length === 0) {
+  // State C (Empty): Initial Firestore sync has fully finished, no error occurred, and database returned 0 articles
+  if (hasArticlesLoaded && !isSyncingFirestore && !firestoreSyncError && publishedArticles.length === 0) {
     return (
       <div className="container mx-auto px-4 py-20 text-center max-w-md space-y-4">
         <div className="p-4 bg-zinc-100 dark:bg-zinc-900 rounded-full w-16 h-16 mx-auto flex items-center justify-center text-zinc-400">
@@ -172,8 +156,8 @@ export function Home() {
                 src={heroArticle.imageUrl} 
                 alt={heroArticle.title}
                 type="card"
-                loading="eager"
-                fetchPriority="high"
+                loading="lazy"
+                fetchPriority="low"
                 widths={[360, 480, 720, 1080]}
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 70vw, 800px"
                 defaultWidth={720}

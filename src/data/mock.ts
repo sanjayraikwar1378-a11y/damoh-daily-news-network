@@ -324,7 +324,7 @@ export const MOCK_MEDIA: MediaItem[] = [
 ];
 
 export const MOCK_ADS: AdSettings = {
-  googleAdsenseId: 'pub-9876543210123456',
+  googleAdsenseId: 'pub-2796957315598605',
   headerAd: {
     enabled: true,
     imageUrl: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1000&h=120&fit=crop',

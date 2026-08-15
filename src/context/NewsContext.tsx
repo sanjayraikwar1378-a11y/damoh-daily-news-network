@@ -26,10 +26,13 @@ import {
   getDoc,
   getDocs,
   addDoc,
+  query,
+  orderBy,
+  limit,
   sanitizeFirestoreData 
 } from '@/lib/firebase';
 import { isWithin48Hours } from '@/lib/utils';
-import { saveArticlesToCache } from '@/lib/articleCache';
+import { saveArticlesToCache, getStoredArticlesList, saveArticlesListToStorage } from '@/lib/articleCache';
 
 export function createSlug(title: string, uniqueId?: string): string {
   let clean = title.trim()
@@ -99,6 +102,7 @@ interface NewsContextType {
   addToHistory: (articleId: string) => void;
 
   // Status & Optimization
+  hasArticlesLoaded: boolean;
   isSyncingFirestore: boolean;
   firestoreSyncError: boolean;
   retryFirestoreSync: () => void;
@@ -109,8 +113,9 @@ interface NewsContextType {
 const NewsContext = createContext<NewsContextType | undefined>(undefined);
 
 export function NewsProvider({ children }: { children: ReactNode }) {
-  // Production initial states are empty arrays to avoid showing old demo mock news on load
-  const [articles, setArticles] = useState<Article[]>([]);
+  // Initialize articles with local cache if available for instant initial render
+  const [articles, setArticles] = useState<Article[]>(() => getStoredArticlesList());
+  const [hasArticlesLoaded, setHasArticlesLoaded] = useState<boolean>(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [reporters, setReporters] = useState<Reporter[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -163,16 +168,16 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // Emergency fallback timer: strictly 12 seconds in case network is disconnected or Firestore completely fails to respond
+    // Emergency fallback timer: 4 seconds fallback in case network is disconnected or Firestore fails
     const emergencyTimer = setTimeout(() => {
       if (isMounted) {
         if (!hasArticlesLoaded || !hasCategoriesLoaded || !hasReportersLoaded) {
-          console.warn("Firestore sync emergency fallback triggered after 12s");
+          console.warn("Firestore sync fallback triggered after 4s");
           setIsSyncingFirestore(false);
-          setFirestoreSyncError(true);
+          setFirestoreSyncError(false); // Do not force error screen, allow direct article fetch to proceed
         }
       }
-    }, 12000);
+    }, 4000);
 
     // One-time fetch for site, ad, and market settings for public headers & banners
     const fetchPublicSettingsOnce = async () => {
@@ -200,25 +205,28 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     fetchPublicSettingsOnce();
 
     try {
-      // 1. Articles Sync (Public Real-time)
-      unsubArticles = onSnapshot(collection(db, "articles"), (snap) => {
+      // 1. Articles Sync (Public Real-time with ordering by publishedAt desc)
+      const articlesQuery = query(collection(db, "articles"), orderBy("publishedAt", "desc"), limit(60));
+      unsubArticles = onSnapshot(articlesQuery, (snap) => {
         const list: Article[] = [];
         snap.forEach((d) => list.push(d.data() as Article));
         if (list.length > 0) {
           list.sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime());
           setArticles(list);
           saveArticlesToCache(list);
+          saveArticlesListToStorage(list);
         } else {
           setArticles([]);
         }
         hasArticlesLoaded = true;
+        setHasArticlesLoaded(true);
         notifyIfInitialSyncDone();
       }, (err) => {
         console.warn("Articles listener notice:", err);
         if (isMounted) {
           hasArticlesLoaded = true;
-          setFirestoreSyncError(true);
-          setIsSyncingFirestore(false);
+          setHasArticlesLoaded(true);
+          notifyIfInitialSyncDone();
         }
       });
 
@@ -812,6 +820,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     toggleBookmark,
     readingHistory,
     addToHistory,
+    hasArticlesLoaded,
     isSyncingFirestore,
     firestoreSyncError,
     retryFirestoreSync,
@@ -829,6 +838,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     marketRates,
     bookmarks,
     readingHistory,
+    hasArticlesLoaded,
     isSyncingFirestore,
     firestoreSyncError,
     retryFirestoreSync,

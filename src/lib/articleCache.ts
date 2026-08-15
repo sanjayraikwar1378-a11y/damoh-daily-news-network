@@ -54,6 +54,30 @@ export function saveArticlesToCache(articles: Article[]): void {
   articles.forEach(saveArticleToCache);
 }
 
+const ARTICLES_LIST_STORAGE_KEY = 'damoh_cached_articles_v1';
+
+export function getStoredArticlesList(): Article[] {
+  try {
+    const raw = localStorage.getItem(ARTICLES_LIST_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Re-populate in-memory articleCache
+      parsed.forEach(saveArticleToCache);
+      return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+export function saveArticlesListToStorage(articles: Article[]): void {
+  try {
+    if (Array.isArray(articles) && articles.length > 0) {
+      localStorage.setItem(ARTICLES_LIST_STORAGE_KEY, JSON.stringify(articles.slice(0, 50)));
+    }
+  } catch {}
+}
+
 const pendingFetches = new Map<string, Promise<Article | null>>();
 
 export async function fetchArticleBySlugOrId(slugOrId: string): Promise<Article | null> {
@@ -71,7 +95,28 @@ export async function fetchArticleBySlugOrId(slugOrId: string): Promise<Article 
 
   const fetchPromise = (async () => {
     try {
-      // Query by slug first
+      // Fast Path 1: Check if target is directly a document ID (e.g., a1786033009616 or similar)
+      if (/^a\d+$/.test(target)) {
+        const docRef = await getDoc(doc(db, "articles", target));
+        if (docRef.exists()) {
+          const art = docRef.data() as Article;
+          saveArticleToCache(art);
+          return art;
+        }
+      }
+
+      // Fast Path 2: Check for trailing document ID in slug (e.g. "...-a1786033009616" or "..._a1786033009616")
+      const idMatch = target.match(/[-_](a\d+)$/);
+      if (idMatch && idMatch[1]) {
+        const docRef = await getDoc(doc(db, "articles", idMatch[1]));
+        if (docRef.exists()) {
+          const art = docRef.data() as Article;
+          saveArticleToCache(art);
+          return art;
+        }
+      }
+
+      // Query by slug field
       const q = query(collection(db, "articles"), where("slug", "==", target), limit(1));
       const snap = await getDocs(q);
       if (!snap.empty) {

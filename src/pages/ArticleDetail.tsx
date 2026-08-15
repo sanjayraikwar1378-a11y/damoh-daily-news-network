@@ -27,6 +27,7 @@ import { LazySection } from "@/components/LazySection"
 import { getCachedArticle, fetchArticleBySlugOrId, saveArticleToCache } from "@/lib/articleCache"
 import { AuthorByline } from "@/components/AuthorByline"
 import { StickyLatestNewsWidget } from "@/components/StickyLatestNewsWidget"
+import { ArticleTextToSpeech } from "@/components/ArticleTextToSpeech"
 import { getReadingTime } from "@/lib/utils"
 
 export function ArticleDetail() {
@@ -163,24 +164,6 @@ export function ArticleDetail() {
 
   const article = contextArticle || directArticle
 
-  // Preload Hero Image for direct article page arrivals
-  useEffect(() => {
-    if (!article?.imageUrl) return;
-    const heroSrc = getOptimizedImageUrl(article.imageUrl, { width: 800 });
-    const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'image';
-    link.href = heroSrc;
-    // @ts-ignore fetchPriority
-    link.fetchPriority = 'high';
-    document.head.appendChild(link);
-    return () => {
-      if (document.head.contains(link)) {
-        document.head.removeChild(link);
-      }
-    };
-  }, [article?.imageUrl]);
-
   // Ref to prevent multiple view counts on re-renders for the same article ID
   const trackedArticleIdRef = useRef<string | null>(null)
 
@@ -218,7 +201,14 @@ export function ArticleDetail() {
         el.setAttribute('content', content)
       }
 
-      const fullUrl = window.location.href
+      const cleanSlug = article.slug || article.id || slug || ""
+      const isLocalOrPreview = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' || 
+        window.location.hostname.includes('ais-') ||
+        window.location.hostname.includes('127.0.0.1')
+      )
+      const canonicalOrigin = isLocalOrPreview ? window.location.origin : 'https://damoh-daily-news-network.vercel.app'
+      const canonicalUrl = `${canonicalOrigin}/article/${cleanSlug}`
       const desc = article.excerpt || article.title
       const img = article.imageUrl || "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1200&h=630&fit=crop"
 
@@ -230,7 +220,7 @@ export function ArticleDetail() {
       updateMetaTag('property', 'og:description', desc)
       updateMetaTag('property', 'og:image', img)
       updateMetaTag('property', 'og:image:secure_url', img)
-      updateMetaTag('property', 'og:url', fullUrl)
+      updateMetaTag('property', 'og:url', canonicalUrl)
       updateMetaTag('property', 'article:published_time', article.publishedAt || new Date().toISOString())
       updateMetaTag('property', 'article:author', authorName)
 
@@ -247,7 +237,7 @@ export function ArticleDetail() {
         canonicalEl.setAttribute('rel', 'canonical')
         document.head.appendChild(canonicalEl)
       }
-      canonicalEl.setAttribute('href', fullUrl)
+      canonicalEl.setAttribute('href', canonicalUrl)
 
       // JSON-LD NewsArticle schema tag update
       let jsonLdEl = document.getElementById('article-json-ld')
@@ -260,9 +250,10 @@ export function ArticleDetail() {
       const jsonLdData = {
         "@context": "https://schema.org",
         "@type": "NewsArticle",
-        "mainEntityOfPage": { "@type": "WebPage", "@id": fullUrl },
+        "mainEntityOfPage": { "@type": "WebPage", "@id": canonicalUrl },
         "headline": article.title,
         "description": desc,
+        "articleBody": (article.content ? article.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : desc),
         "image": [img],
         "datePublished": article.publishedAt || new Date().toISOString(),
         "dateModified": article.updatedAt || article.publishedAt || new Date().toISOString(),
@@ -307,8 +298,8 @@ export function ArticleDetail() {
     }
   }
 
-  // Friendly error banner if Firestore sync failed
-  if (!article && firestoreSyncError) {
+  // Friendly error banner if both direct fetch and Firestore sync failed
+  if (!article && isArticleFetchDone && firestoreSyncError) {
     return <FirestoreErrorBanner onRetry={retryFirestoreSync} />
   }
 
@@ -472,8 +463,8 @@ export function ArticleDetail() {
           </p>
         )}
 
-        {/* Mobile Author Byline (Immediately below title/excerpt) */}
-        <div className="md:hidden py-2 border-y border-zinc-200 dark:border-zinc-800 my-1">
+        {/* Mobile Author Byline & TTS (Immediately below title/excerpt) */}
+        <div className="md:hidden py-2 border-y border-zinc-200 dark:border-zinc-800 my-1 flex flex-wrap items-center justify-between gap-2">
           <AuthorByline 
             reporter={reporter} 
             authorNameFallback={(article as any).authorName || (article as any).reporterName}
@@ -481,6 +472,7 @@ export function ArticleDetail() {
             formatDateAgo={formatDateAgo} 
             variant="header" 
           />
+          <ArticleTextToSpeech article={article} />
         </div>
 
         {/* Desktop Metadata & Actions Bar (Unchanged for Desktop) */}
@@ -494,6 +486,8 @@ export function ArticleDetail() {
           />
 
           <div className="flex items-center gap-2">
+            <ArticleTextToSpeech article={article} />
+
             <Button 
               variant={hasLiked ? "default" : "outline"} 
               size="sm" 
@@ -530,8 +524,8 @@ export function ArticleDetail() {
             src={articleImageUrl} 
             alt={article.title}
             type="article"
-            loading="eager"
-            fetchPriority="high"
+            loading="lazy"
+            fetchPriority="low"
             widths={[360, 480, 720, 1080]}
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 800px"
             defaultWidth={800}

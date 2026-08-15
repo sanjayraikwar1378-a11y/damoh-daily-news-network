@@ -127,14 +127,26 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
 
 async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
   const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
-  const listUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles?pageSize=100`;
+  const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
 
   try {
-    const res = await fetch(listUrl);
+    const res = await fetch(queryUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: "articles" }],
+          orderBy: [{ field: { fieldPath: "publishedAt" }, direction: "DESCENDING" }],
+          limit: 100
+        }
+      })
+    });
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.documents) && data.documents.length > 0) {
-        return data.documents.map((doc: any) => parseFirestoreFields(doc.fields));
+      if (Array.isArray(data) && data.length > 0) {
+        return data
+          .map((item: any) => item.document ? parseFirestoreFields(item.document.fields) : null)
+          .filter(Boolean);
       }
     }
   } catch (err) {
@@ -206,6 +218,22 @@ Sitemap: ${baseUrl}/sitemap.xml
 `;
 }
 
+function formatArticleBodyForSSR(content: string, excerpt: string): string {
+  const text = (content || excerpt || "").trim();
+  if (!text) return "";
+
+  if (text.includes("<p>") || text.includes("<div>")) {
+    return text;
+  }
+
+  return text
+    .split(/\n+/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => `<p style="margin-bottom:1.1rem;font-size:1.125rem;line-height:1.75;color:#27272a;">${escapeHtml(p)}</p>`)
+    .join("\n");
+}
+
 async function generateSitemapXml(baseUrl: string): Promise<string> {
   const articles = await getAllArticlesForFeed();
   const categories = INITIAL_CATEGORIES;
@@ -235,6 +263,7 @@ async function generateSitemapXml(baseUrl: string): Promise<string> {
     const pubDate = art.publishedAt || nowIso;
     const title = escapeHtml(art.title || "Damoh News");
     const articleUrl = `${baseUrl}/article/${articleSlug}`;
+    const image = getArticleImageUrl(art, articleSlug, baseUrl);
 
     urlsXml += `
   <url>
@@ -250,6 +279,10 @@ async function generateSitemapXml(baseUrl: string): Promise<string> {
       <news:publication_date>${pubDate}</news:publication_date>
       <news:title>${title}</news:title>
     </news:news>
+    ${image ? `<image:image>
+      <image:loc>${escapeHtml(image)}</image:loc>
+      <image:title>${title}</image:title>
+    </image:image>` : ''}
   </url>`;
   }
 
@@ -325,6 +358,8 @@ function getHtmlTemplate(): string {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Google AdSense Verification & Auto Ads -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2796957315598605" crossorigin="anonymous"></script>
     <title>Damoh Daily News - दमोह और मध्य प्रदेश की ताज़ा ख़बरें</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -351,6 +386,9 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
   const modifiedTime = article.updatedAt || publishedTime;
   const canonicalUrl = escapeHtml(fullUrl);
 
+  const rawContentFormatted = formatArticleBodyForSSR(article.content || "", article.excerpt || "");
+  const cleanBodyPlain = stripTags(article.content || article.excerpt || "");
+
   const jsonLdNewsArticle = {
     "@context": "https://schema.org",
     "@type": "NewsArticle",
@@ -360,6 +398,7 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
     },
     "headline": rawTitle,
     "description": stripTags(rawExcerpt).slice(0, 200),
+    "articleBody": cleanBodyPlain,
     "image": [imageUrl],
     "datePublished": publishedTime,
     "dateModified": modifiedTime,
@@ -435,6 +474,25 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
     <script type="application/ld+json">${JSON.stringify(jsonLdBreadcrumbs)}</script>
   `;
 
+  const serverRenderedBody = `<div id="root">
+    <main style="max-width:800px;margin:0 auto;padding:1.5rem 1rem;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+      <article>
+        <header style="margin-bottom:1.5rem;">
+          <h1 style="font-size:1.875rem;line-height:1.3;font-weight:800;color:#18181b;margin-bottom:0.75rem;">${cleanTitle}</h1>
+          ${article.excerpt ? `<p style="font-size:1.125rem;line-height:1.6;color:#52525b;margin-bottom:1rem;font-weight:500;">${escapeHtml(stripTags(article.excerpt))}</p>` : ''}
+          <div style="display:flex;align-items:center;gap:1rem;font-size:0.875rem;color:#71717a;border-top:1px solid #e4e4e7;border-bottom:1px solid #e4e4e7;padding:0.5rem 0;">
+            <span>लेखक: <strong>${author}</strong></span>
+            <span>प्रकाशित: <time datetime="${publishedTime}">${publishedTime.slice(0, 10)}</time></span>
+          </div>
+        </header>
+        ${imageUrl ? `<div style="margin-bottom:1.5rem;"><img src="${imageUrl}" alt="${cleanTitle}" style="width:100%;height:auto;max-height:480px;object-fit:cover;border-radius:0.75rem;" /></div>` : ''}
+        <div class="article-body-content">
+          ${rawContentFormatted}
+        </div>
+      </article>
+    </main>
+  </div>`;
+
   let cleanHtml = html
     .replace(/<title>[\s\S]*?<\/title>/gi, '')
     .replace(/<meta\s+name=["']description["'][\s\S]*?>/gi, '')
@@ -442,6 +500,8 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
     .replace(/<meta\s+property=["']article:[\s\S]*?["'][\s\S]*?>/gi, '')
     .replace(/<meta\s+name=["']twitter:[\s\S]*?["'][\s\S]*?>/gi, '')
     .replace(/<link\s+rel=["']canonical["'][\s\S]*?>/gi, '');
+
+  cleanHtml = cleanHtml.replace('<div id="root"></div>', serverRenderedBody);
 
   return cleanHtml.replace('</head>', `${metaTagsHtml}\n</head>`);
 }
@@ -585,6 +645,63 @@ export function createExpressApp() {
     }
   });
 
+  // Live Damoh Weather Proxy API with in-memory caching and fail-safe fallback
+  let weatherCache: { data: any; timestamp: number } | null = null;
+  const WEATHER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+  app.get("/api/weather", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (weatherCache && (now - weatherCache.timestamp < WEATHER_CACHE_TTL)) {
+        res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
+        return res.json(weatherCache.data);
+      }
+
+      const DAMOH_LAT = 23.8388;
+      const DAMOH_LON = 79.4422;
+      const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${DAMOH_LAT}&longitude=${DAMOH_LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,visibility&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=Asia%2FKolkata`;
+
+      const response = await fetch(apiUrl, { signal: AbortSignal.timeout(6000) });
+      if (!response.ok) {
+        throw new Error(`Weather API HTTP error: ${response.status}`);
+      }
+      const data = await response.json();
+      if (!data || !data.current || !data.daily) {
+        throw new Error("Invalid weather payload");
+      }
+
+      weatherCache = { data, timestamp: now };
+      res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
+      return res.json(data);
+    } catch (err: any) {
+      if (weatherCache) {
+        res.setHeader("Cache-Control", "public, max-age=120");
+        return res.json(weatherCache.data);
+      }
+
+      // Safe local fallback for Damoh if remote API is momentarily unreachable
+      const defaultData = {
+        current: {
+          temperature_2m: 29,
+          apparent_temperature: 31,
+          weather_code: 1,
+          relative_humidity_2m: 72,
+          wind_speed_10m: 9,
+          visibility: 10000,
+          is_day: 1
+        },
+        daily: {
+          temperature_2m_max: [33],
+          temperature_2m_min: [24],
+          sunrise: [`${new Date().toISOString().split("T")[0]}T05:52`],
+          sunset: [`${new Date().toISOString().split("T")[0]}T18:48`]
+        }
+      };
+      res.setHeader("Cache-Control", "public, max-age=120");
+      return res.json(defaultData);
+    }
+  });
+
   // Serve firebase-applet-config.json explicitly if requested
   app.get("/firebase-applet-config.json", (_req, res) => {
     const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
@@ -659,6 +776,13 @@ export function createExpressApp() {
       res.setHeader("Cache-Control", "public, max-age=300");
       return res.redirect(302, DEFAULT_SHARE_IMAGE);
     }
+  });
+
+  // Google AdSense ads.txt authorization
+  app.get("/ads.txt", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.status(200).send("google.com, pub-2796957315598605, DIRECT, f08c47fec0942fa0\n");
   });
 
   // SEO Routes for Google Search Console, Google News, and Web Crawlers
