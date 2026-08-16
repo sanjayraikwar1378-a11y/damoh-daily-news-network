@@ -1,5 +1,5 @@
 {
-  "name": "Damoh Daily News - दमोह न्यूज़",
+  "name": "Damoh Daily News",
   "short_name": "Damoh News",
   "description": "दमोह और मध्य प्रदेश की विश्वसनीय, सटीक और ताज़ा खबरें। राजनीति, अपराध, समाज, मौसम और स्थानीय समाचार।",
   "start_url": "/",
@@ -16,13 +16,25 @@
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/icon.svg",
@@ -37,21 +49,21 @@
       "short_name": "ताज़ा खबरें",
       "description": "दमोह की ताज़ा और ब्रेकिंग खबरें",
       "url": "/latest",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "दमोह लोकल (Damoh Local)",
       "short_name": "दमोह",
       "description": "दमोह जिले की स्थानीय खबरें",
       "url": "/category/damoh",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "राजनीति (Politics)",
       "short_name": "राजनीति",
       "description": "मध्य प्रदेश और देश की राजनीतिक हलचल",
       "url": "/category/politics",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { 
   Article, 
   Category, 
@@ -27,7 +27,9 @@ import {
   addDoc,
   query,
   orderBy,
+  where,
   limit,
+  startAfter,
   sanitizeFirestoreData 
 } from '@/lib/firebase';
 import { isWithin48Hours } from '@/lib/utils';
@@ -107,6 +109,10 @@ interface NewsContextType {
   retryFirestoreSync: () => void;
   isAdminDataLoaded: boolean;
   loadAdminData: () => void;
+  hasMoreArticles: boolean;
+  fetchMoreArticles: () => Promise<Article[]>;
+  fetchCategoryArticles: (categoryId: string) => Promise<Article[]>;
+  searchArticlesRemote: (queryStr: string) => Promise<Article[]>;
 }
 
 const NewsContext = createContext<NewsContextType | undefined>(undefined);
@@ -128,11 +134,159 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   const [firestoreSyncError, setFirestoreSyncError] = useState<boolean>(false);
   const [syncRetryCount, setSyncRetryCount] = useState<number>(0);
   const [isAdminDataLoaded, setIsAdminDataLoaded] = useState<boolean>(false);
+  const [hasMoreArticles, setHasMoreArticles] = useState<boolean>(true);
+  const isFetchingMoreRef = useRef<boolean>(false);
 
   const retryFirestoreSync = useCallback(() => {
     setIsSyncingFirestore(true);
     setFirestoreSyncError(false);
     setSyncRetryCount(prev => prev + 1);
+  }, []);
+
+  // Fetch older articles on demand (for infinite scroll / pagination on Latest News)
+  const fetchMoreArticles = useCallback(async (): Promise<Article[]> => {
+    if (isFetchingMoreRef.current) return [];
+    isFetchingMoreRef.current = true;
+
+    try {
+      let q;
+      if (articles.length > 0) {
+        const oldest = articles[articles.length - 1];
+        const oldestDate = oldest.publishedAt || (oldest as any).createdAt || new Date().toISOString();
+        q = query(
+          collection(db, "articles"),
+          orderBy("publishedAt", "desc"),
+          where("publishedAt", "<", oldestDate),
+          limit(25)
+        );
+      } else {
+        q = query(
+          collection(db, "articles"),
+          orderBy("publishedAt", "desc"),
+          limit(25)
+        );
+      }
+
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        setHasMoreArticles(false);
+        isFetchingMoreRef.current = false;
+        return [];
+      }
+
+      const newBatch: Article[] = [];
+      snap.forEach(d => {
+        newBatch.push(d.data() as Article);
+      });
+
+      if (newBatch.length < 25) {
+        setHasMoreArticles(false);
+      }
+
+      setArticles(prev => {
+        const existingIds = new Set(prev.map(a => a.id));
+        const filtered = newBatch.filter(a => !existingIds.has(a.id));
+        if (filtered.length === 0) return prev;
+        const merged = [...prev, ...filtered].sort(
+          (a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
+        );
+        saveArticlesToCache(merged);
+        return merged;
+      });
+
+      isFetchingMoreRef.current = false;
+      return newBatch;
+    } catch (err) {
+      console.warn("fetchMoreArticles error, attempting broader fetch fallback:", err);
+      try {
+        const snap = await getDocs(query(collection(db, "articles"), orderBy("publishedAt", "desc"), limit(100)));
+        const all: Article[] = [];
+        snap.forEach(d => all.push(d.data() as Article));
+        if (all.length > 0) {
+          setArticles(prev => {
+            const existingIds = new Set(prev.map(a => a.id));
+            const fresh = all.filter(a => !existingIds.has(a.id));
+            if (fresh.length === 0) return prev;
+            const merged = [...prev, ...fresh].sort(
+              (a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
+            );
+            saveArticlesToCache(merged);
+            return merged;
+          });
+        }
+        setHasMoreArticles(false);
+      } catch (fallbackErr) {
+        console.warn("fetchMoreArticles fallback notice:", fallbackErr);
+      }
+      isFetchingMoreRef.current = false;
+      return [];
+    }
+  }, [articles]);
+
+  // Fetch all articles for a specific category on demand
+  const fetchCategoryArticles = useCallback(async (categoryId: string): Promise<Article[]> => {
+    if (!categoryId) return [];
+    try {
+      const q = query(
+        collection(db, "articles"),
+        where("categoryIds", "array-contains", categoryId),
+        limit(50)
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) return [];
+      const catList: Article[] = [];
+      snap.forEach(d => catList.push(d.data() as Article));
+
+      setArticles(prev => {
+        const existingIds = new Set(prev.map(a => a.id));
+        const fresh = catList.filter(a => !existingIds.has(a.id));
+        if (fresh.length === 0) return prev;
+        const merged = [...prev, ...fresh].sort(
+          (a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
+        );
+        saveArticlesToCache(merged);
+        return merged;
+      });
+      return catList;
+    } catch (err) {
+      console.warn("fetchCategoryArticles notice:", err);
+      return [];
+    }
+  }, []);
+
+  // Search remote articles for older news matching query
+  const searchArticlesRemote = useCallback(async (queryStr: string): Promise<Article[]> => {
+    if (!queryStr || !queryStr.trim()) return [];
+    try {
+      const snap = await getDocs(query(collection(db, "articles"), orderBy("publishedAt", "desc"), limit(100)));
+      const list: Article[] = [];
+      snap.forEach(d => list.push(d.data() as Article));
+      if (list.length > 0) {
+        setArticles(prev => {
+          const existingIds = new Set(prev.map(a => a.id));
+          const fresh = list.filter(a => !existingIds.has(a.id));
+          if (fresh.length === 0) return prev;
+          const merged = [...prev, ...fresh].sort(
+            (a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
+          );
+          saveArticlesToCache(merged);
+          return merged;
+        });
+
+        const q = queryStr.toLowerCase().trim();
+        return list.filter(a => {
+          const status = a.status || 'published';
+          if (status !== 'published') return false;
+          const title = (a.title || '').toLowerCase();
+          const excerpt = (a.excerpt || '').toLowerCase();
+          const content = (a.content || '').toLowerCase();
+          return title.includes(q) || excerpt.includes(q) || content.includes(q);
+        });
+      }
+    } catch (err) {
+      console.warn("searchArticlesRemote notice:", err);
+    }
+    return [];
   }, []);
 
   // Automatic recovery when internet connection returns
@@ -269,10 +423,22 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     };
   }, [syncRetryCount]);
 
-  // 2. Admin Subscriptions On-Demand (Reporters, Comments, Media, Live Settings)
+  // 2. Admin Subscriptions On-Demand (All Articles, Reporters, Comments, Media, Live Settings)
   const loadAdminData = useCallback(() => {
     if (isAdminDataLoaded) return;
     setIsAdminDataLoaded(true);
+
+    // Full articles subscription for Admin CMS to view and manage ALL articles in Firestore
+    const unsubAdminArticles = onSnapshot(query(collection(db, "articles"), orderBy("publishedAt", "desc")), (snap) => {
+      const list: Article[] = [];
+      snap.forEach((d) => list.push(d.data() as Article));
+      if (list.length > 0) {
+        list.sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime());
+        setArticles(list);
+        saveArticlesToCache(list);
+        saveArticlesListToStorage(list);
+      }
+    }, (err) => console.warn("Admin articles listener notice:", err));
 
     const unsubReporters = onSnapshot(collection(db, "reporters"), (snap) => {
       const list: Reporter[] = [];
@@ -328,6 +494,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     }, (err) => console.warn("Market rates listener notice:", err));
 
     return () => {
+      unsubAdminArticles();
       unsubReporters();
       unsubComments();
       unsubMedia();
@@ -786,7 +953,11 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     firestoreSyncError,
     retryFirestoreSync,
     isAdminDataLoaded,
-    loadAdminData
+    loadAdminData,
+    hasMoreArticles,
+    fetchMoreArticles,
+    fetchCategoryArticles,
+    searchArticlesRemote
   }), [
     articles,
     breakingNews,
@@ -804,7 +975,11 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     firestoreSyncError,
     retryFirestoreSync,
     isAdminDataLoaded,
-    loadAdminData
+    loadAdminData,
+    hasMoreArticles,
+    fetchMoreArticles,
+    fetchCategoryArticles,
+    searchArticlesRemote
   ]);
 
   return (

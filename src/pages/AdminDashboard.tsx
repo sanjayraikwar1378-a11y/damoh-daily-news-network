@@ -4,9 +4,14 @@ import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
 import { Button } from "@/components/ui/button"
 import { Link } from "react-router-dom"
+import { useEffect } from "react"
 
 export function AdminDashboard() {
-  const { articles, reporters, categories, comments } = useNews()
+  const { articles, reporters, categories, comments, loadAdminData } = useNews()
+
+  useEffect(() => {
+    loadAdminData()
+  }, [loadAdminData])
   
   const totalArticles = articles.length
   const publishedCount = articles.filter(a => (a.status || 'published') === 'published').length

@@ -11,11 +11,18 @@ import { ResponsiveImage } from "@/components/ResponsiveImage"
 
 export function CategoryPage() {
   const { slug } = useParams()
-  const { categories, articles, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
+  const { categories, articles, fetchCategoryArticles, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
   const [visibleCount, setVisibleCount] = useState(6)
   const loaderRef = useRef<HTMLDivElement | null>(null)
   
   const category = useMemo(() => categories.find(c => c.slug === slug), [categories, slug])
+
+  // Fetch complete category articles on demand
+  useEffect(() => {
+    if (category?.id) {
+      fetchCategoryArticles(category.id)
+    }
+  }, [category?.id, fetchCategoryArticles])
   const categoryArticles = useMemo(() => {
     if (!category) return []
     return articles

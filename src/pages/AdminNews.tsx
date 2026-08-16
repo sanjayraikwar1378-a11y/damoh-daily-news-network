@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { 
   Edit, 
@@ -29,8 +29,13 @@ export function AdminNews() {
     deleteArticle, 
     duplicateArticle, 
     bulkUpdateStatus, 
-    bulkDeleteArticles 
+    bulkDeleteArticles,
+    loadAdminData
   } = useNews()
+
+  useEffect(() => {
+    loadAdminData()
+  }, [loadAdminData])
 
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")

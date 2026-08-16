@@ -170,7 +170,7 @@ async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
         structuredQuery: {
           from: [{ collectionId: "articles" }],
           orderBy: [{ field: { fieldPath: "publishedAt" }, direction: "DESCENDING" }],
-          limit: 100
+          limit: 1000
         }
       })
     });
@@ -449,7 +449,7 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
       "url": baseUrl,
       "logo": {
         "@type": "ImageObject",
-        "url": `${baseUrl}/icon.png`
+        "url": `${baseUrl}/icon-512.png`
       }
     }
   };
@@ -565,7 +565,7 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
     "@type": "NewsMediaOrganization",
     "name": "Damoh Daily News",
     "url": baseUrl,
-    "logo": `${baseUrl}/icon.png`,
+    "logo": `${baseUrl}/icon-512.png`,
     "sameAs": [
       "https://facebook.com",
       "https://twitter.com",
@@ -850,14 +850,34 @@ export function createExpressApp() {
     }
   });
 
-  app.get(["/icon.svg", "/icon.png", "/icon-192.png", "/icon-512.png"], (req, res) => {
-    const iconPath = path.resolve(process.cwd(), "public", "icon.svg");
+  app.get([
+    "/icon.svg", 
+    "/icon.png", 
+    "/icon-192.png", 
+    "/icon-512.png",
+    "/icon-192-maskable.png",
+    "/icon-512-maskable.png",
+    "/apple-touch-icon.png",
+    "/favicon.png",
+    "/favicon-48x48.png",
+    "/favicon-32x32.png",
+    "/favicon-16x16.png"
+  ], (req, res) => {
+    const filename = req.path.replace(/^\//, '') || 'icon.svg';
+    const iconPath = path.resolve(process.cwd(), "public", filename);
     if (fs.existsSync(iconPath)) {
-      res.setHeader("Content-Type", "image/svg+xml");
+      const isSvg = filename.endsWith('.svg');
+      res.setHeader("Content-Type", isSvg ? "image/svg+xml" : "image/png");
       res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
       res.sendFile(iconPath);
     } else {
-      res.redirect(302, DEFAULT_SHARE_IMAGE);
+      const fallbackPath = path.resolve(process.cwd(), "public", "icon-192.png");
+      if (fs.existsSync(fallbackPath)) {
+        res.setHeader("Content-Type", "image/png");
+        res.sendFile(fallbackPath);
+      } else {
+        res.redirect(302, DEFAULT_SHARE_IMAGE);
+      }
     }
   });
 

@@ -11,13 +11,16 @@ import { ResponsiveImage } from "@/components/ResponsiveImage"
 export function SearchResults() {
   const [searchParams] = useSearchParams()
   const query = searchParams.get("q") || ""
-  const { articles, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
+  const { articles, searchArticlesRemote, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
   const [visibleCount, setVisibleCount] = useState(6)
   const loaderRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setVisibleCount(6)
-  }, [query])
+    if (query.trim()) {
+      searchArticlesRemote(query.trim())
+    }
+  }, [query, searchArticlesRemote])
 
   const searchResults = useMemo(() => {
     if (!query.trim()) return []

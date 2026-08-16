@@ -1,3 +1,12 @@
+import fs from 'fs';
+import path from 'path';
+import sharp from 'sharp';
+
+// Build the exact approved Damoh Daily News Logo SVG
+const svgWidth = 1024;
+const svgHeight = 1024;
+
+const baseSvg = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
     <!-- Gradients -->
@@ -311,3 +320,102 @@
     </g>
   </g>
 </svg>
+`;
+
+// Maskable Icon SVG (Contains safe area padding ~15% on all sides so Android round/squircle mask does not clip)
+const maskableSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Solid background for maskable canvas filling edge to edge -->
+  <rect width="1024" height="1024" fill="#990000" />
+  
+  <!-- Scaled down logo centered in safe zone (80% scale) -->
+  <g transform="translate(102.4, 102.4) scale(0.8)">
+    ${baseSvg.replace(/<\?xml.*?\?>/, '').replace(/<svg[^>]*>/, '').replace(/<\/svg>/, '')}
+  </g>
+</svg>
+`;
+
+async function generateAssets() {
+  const publicDir = path.join(process.cwd(), 'public');
+  if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
+  }
+
+  // 1. Write the high-resolution vector SVG
+  fs.writeFileSync(path.join(publicDir, 'icon.svg'), baseSvg.trim());
+  console.log('Created icon.svg');
+
+  // 2. Generate standard sizes using Sharp
+  const svgBuffer = Buffer.from(baseSvg);
+  const maskableBuffer = Buffer.from(maskableSvg);
+
+  // 512x512 PNG
+  await sharp(svgBuffer)
+    .resize(512, 512)
+    .png({ quality: 100, compressionLevel: 9 })
+    .toFile(path.join(publicDir, 'icon-512.png'));
+  console.log('Created icon-512.png');
+
+  // 192x192 PNG
+  await sharp(svgBuffer)
+    .resize(192, 192)
+    .png({ quality: 100, compressionLevel: 9 })
+    .toFile(path.join(publicDir, 'icon-192.png'));
+  console.log('Created icon-192.png');
+
+  // 180x180 Apple Touch Icon
+  await sharp(svgBuffer)
+    .resize(180, 180)
+    .png({ quality: 100, compressionLevel: 9 })
+    .toFile(path.join(publicDir, 'apple-touch-icon.png'));
+  console.log('Created apple-touch-icon.png');
+
+  // 48x48 Favicon PNG
+  await sharp(svgBuffer)
+    .resize(48, 48)
+    .png({ quality: 100 })
+    .toFile(path.join(publicDir, 'favicon-48x48.png'));
+  console.log('Created favicon-48x48.png');
+
+  // 32x32 Favicon PNG
+  await sharp(svgBuffer)
+    .resize(32, 32)
+    .png({ quality: 100 })
+    .toFile(path.join(publicDir, 'favicon-32x32.png'));
+  console.log('Created favicon-32x32.png');
+
+  // 16x16 Favicon PNG
+  await sharp(svgBuffer)
+    .resize(16, 16)
+    .png({ quality: 100 })
+    .toFile(path.join(publicDir, 'favicon-16x16.png'));
+  console.log('Created favicon-16x16.png');
+
+  // Standard favicon.png
+  await sharp(svgBuffer)
+    .resize(48, 48)
+    .png({ quality: 100 })
+    .toFile(path.join(publicDir, 'favicon.png'));
+  console.log('Created favicon.png');
+
+  // 512x512 Maskable Icon
+  await sharp(maskableBuffer)
+    .resize(512, 512)
+    .png({ quality: 100, compressionLevel: 9 })
+    .toFile(path.join(publicDir, 'icon-512-maskable.png'));
+  console.log('Created icon-512-maskable.png');
+
+  // 192x192 Maskable Icon
+  await sharp(maskableBuffer)
+    .resize(192, 192)
+    .png({ quality: 100, compressionLevel: 9 })
+    .toFile(path.join(publicDir, 'icon-192-maskable.png'));
+  console.log('Created icon-192-maskable.png');
+
+  console.log('All PWA & Favicon assets generated successfully!');
+}
+
+generateAssets().catch(err => {
+  console.error('Error generating assets:', err);
+  process.exit(1);
+});

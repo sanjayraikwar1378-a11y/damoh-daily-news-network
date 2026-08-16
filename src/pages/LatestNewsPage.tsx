@@ -11,11 +11,23 @@ import { Button } from "@/components/ui/button"
 import { getReadingTime, isWithin2Hours } from "@/lib/utils"
 
 export function LatestNewsPage() {
-  const { articles, categories, reporters, bookmarks, toggleBookmark, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
+  const { 
+    articles, 
+    categories, 
+    reporters, 
+    bookmarks, 
+    toggleBookmark, 
+    isSyncingFirestore, 
+    firestoreSyncError, 
+    retryFirestoreSync,
+    hasMoreArticles,
+    fetchMoreArticles 
+  } = useNews()
   
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [visibleCount, setVisibleCount] = useState<number>(12)
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
   const loaderRef = useRef<HTMLDivElement | null>(null)
 
   // SEO effect for title, meta tags, canonical link and Breadcrumb JSON-LD
@@ -93,14 +105,26 @@ export function LatestNewsPage() {
     return filteredArticles.slice(0, visibleCount)
   }, [filteredArticles, visibleCount])
 
-  const hasMore = visibleCount < filteredArticles.length
+  const hasMore = visibleCount < filteredArticles.length || hasMoreArticles
+
+  const handleLoadMore = async () => {
+    if (isLoadingMore) return
+    if (visibleCount < filteredArticles.length) {
+      setVisibleCount(prev => prev + 12)
+    } else if (hasMoreArticles) {
+      setIsLoadingMore(true)
+      await fetchMoreArticles()
+      setIsLoadingMore(false)
+      setVisibleCount(prev => prev + 12)
+    }
+  }
 
   // Infinite scroll trigger
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore) {
-          setVisibleCount(prev => Math.min(prev + 12, filteredArticles.length))
+        if (entries[0].isIntersecting && (visibleCount < filteredArticles.length || hasMoreArticles)) {
+          handleLoadMore()
         }
       },
       { threshold: 0.1 }
@@ -111,7 +135,7 @@ export function LatestNewsPage() {
     }
 
     return () => observer.disconnect()
-  }, [hasMore, filteredArticles.length])
+  }, [visibleCount, filteredArticles.length, hasMoreArticles, isLoadingMore])
 
   // Reset pagination when filter or search changes
   useEffect(() => {
@@ -408,14 +432,15 @@ export function LatestNewsPage() {
       {hasMore && (
         <div ref={loaderRef} className="py-8 text-center flex flex-col items-center justify-center space-y-3">
           <Button 
-            onClick={() => setVisibleCount(prev => Math.min(prev + 12, filteredArticles.length))}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-md flex items-center gap-2"
+            onClick={handleLoadMore}
+            disabled={isLoadingMore}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-md flex items-center gap-2 disabled:opacity-50"
           >
-            <span>और खबरें लोड करें (Load More News)</span>
+            <span>{isLoadingMore ? "लोड हो रहा है..." : "और खबरें लोड करें (Load More News)"}</span>
             <ChevronRight className="h-4 w-4" />
           </Button>
           <span className="text-[11px] text-zinc-400">
-            {visibleArticles.length} of {filteredArticles.length} articles shown
+            {visibleArticles.length} articles shown
           </span>
         </div>
       )}
