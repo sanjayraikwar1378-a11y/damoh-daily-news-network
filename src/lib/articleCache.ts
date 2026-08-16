@@ -10,7 +10,87 @@ interface CacheEntry {
 const articleCache = new Map<string, CacheEntry>();
 const prefetchedImages = new Set<string>();
 
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache validity
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes cache validity
+
+export function normalizeSlug(slug: string | undefined | null): string {
+  if (!slug) return '';
+  try {
+    return decodeURIComponent(slug).trim().toLowerCase();
+  } catch {
+    return String(slug).trim().toLowerCase();
+  }
+}
+
+export function getSSRArticle(): Article | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    // 1. Check window object
+    if ((window as any).__INITIAL_ARTICLE__) {
+      const art = (window as any).__INITIAL_ARTICLE__ as Article;
+      if (art && (art.id || art.slug)) {
+        saveArticleToCache(art);
+        return art;
+      }
+    }
+    // 2. Check script tag in DOM
+    const scriptEl = document.getElementById('__INITIAL_ARTICLE__');
+    if (scriptEl && scriptEl.textContent) {
+      const art = JSON.parse(scriptEl.textContent) as Article;
+      if (art && (art.id || art.slug)) {
+        (window as any).__INITIAL_ARTICLE__ = art;
+        saveArticleToCache(art);
+        return art;
+      }
+    }
+  } catch (err) {
+    console.warn("getSSRArticle parse notice:", err);
+  }
+  return null;
+}
+
+// Auto-seed in-memory cache with SSR article only if present
+if (typeof window !== 'undefined') {
+  try {
+    const ssr = getSSRArticle();
+    if (ssr) {
+      saveArticleToCache(ssr);
+    }
+  } catch {}
+}
+
+export function isMatchingArticle(a: Article | null | undefined, targetKey: string): boolean {
+  if (!a || !targetKey) return false;
+  const aSlug = a.slug || "";
+  const aId = a.id || "";
+  const targetLower = targetKey.trim().toLowerCase();
+  const aSlugLower = aSlug.trim().toLowerCase();
+  const aIdLower = aId.trim().toLowerCase();
+
+  // 1. Exact slug or ID match
+  if (aSlug === targetKey || aId === targetKey || aSlugLower === targetLower || aIdLower === targetLower) {
+    return true;
+  }
+
+  // 2. Decoded slug match
+  const decodedTarget = normalizeSlug(targetKey);
+  const decodedASlug = normalizeSlug(aSlug);
+  if (decodedASlug && decodedASlug === decodedTarget) {
+    return true;
+  }
+  if (aIdLower && decodedTarget === aIdLower) {
+    return true;
+  }
+
+  // 3. Match if slug ends with -ID or _ID (e.g. "some-news-title-a1786033009616" matching id "a1786033009616")
+  if (aId && (targetLower.endsWith(`-${aIdLower}`) || targetLower.endsWith(`_${aIdLower}`))) {
+    return true;
+  }
+  if (aId && (decodedTarget.endsWith(`-${aIdLower}`) || decodedTarget.endsWith(`_${aIdLower}`))) {
+    return true;
+  }
+
+  return false;
+}
 
 export function getCachedArticle(slugOrId: string): Article | undefined {
   if (!slugOrId) return undefined;
@@ -18,34 +98,45 @@ export function getCachedArticle(slugOrId: string): Article | undefined {
   const target = slugOrId.trim();
   const targetLower = target.toLowerCase();
 
-  // Direct key lookup
+  // 1. Direct key lookup in Map
   const entry = articleCache.get(target) || articleCache.get(targetLower);
   if (entry && Date.now() - entry.timestamp < CACHE_TTL_MS) {
-    return entry.article;
+    if (isMatchingArticle(entry.article, target)) {
+      return entry.article;
+    }
   }
 
-  // Linear lookup for slug/id match
+  // 2. Check SSR Article if not in map
+  const ssr = getSSRArticle();
+  if (ssr && isMatchingArticle(ssr, target)) {
+    return ssr;
+  }
+
+  // 3. Linear lookup for slug/id match across cached articles
   for (const item of articleCache.values()) {
     if (Date.now() - item.timestamp >= CACHE_TTL_MS) continue;
     const a = item.article;
-    if (a.id === target || a.slug === target || a.slug?.toLowerCase() === targetLower) {
-      return a;
-    }
-    if (targetLower.endsWith(`-${a.id.toLowerCase()}`) || targetLower.endsWith(`_${a.id.toLowerCase()}`)) {
+    if (isMatchingArticle(a, target)) {
       return a;
     }
   }
 
+  // NOTE: STRICTLY NEVER FALLBACK TO MOCK/SAMPLE/DEMO ARTICLES FOR A SPECIFIC SLUG
   return undefined;
 }
 
 export function saveArticleToCache(article: Article): void {
   if (!article || (!article.id && !article.slug)) return;
   const entry: CacheEntry = { article, timestamp: Date.now() };
-  if (article.id) articleCache.set(article.id, entry);
+  if (article.id) {
+    articleCache.set(article.id, entry);
+    articleCache.set(article.id.toLowerCase(), entry);
+  }
   if (article.slug) {
     articleCache.set(article.slug, entry);
     articleCache.set(article.slug.toLowerCase(), entry);
+    const norm = normalizeSlug(article.slug);
+    if (norm) articleCache.set(norm, entry);
   }
 }
 
@@ -59,12 +150,13 @@ const ARTICLES_LIST_STORAGE_KEY = 'damoh_cached_articles_v1';
 export function getStoredArticlesList(): Article[] {
   try {
     const raw = localStorage.getItem(ARTICLES_LIST_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      // Re-populate in-memory articleCache
-      parsed.forEach(saveArticleToCache);
-      return parsed;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Re-populate in-memory articleCache
+        parsed.forEach(saveArticleToCache);
+        return parsed;
+      }
     }
   } catch {}
   return [];

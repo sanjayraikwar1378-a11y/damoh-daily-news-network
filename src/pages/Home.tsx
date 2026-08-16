@@ -84,8 +84,8 @@ export function Home() {
     return <FirestoreErrorBanner onRetry={retryFirestoreSync} />
   }
 
-  // State A (Loading): Initial fetch is still in progress and no articles in memory/storage
-  if ((!hasArticlesLoaded || isSyncingFirestore) && publishedArticles.length === 0) {
+  // State A (Loading): Only when there are truly no articles in memory/storage AND initial query has not returned yet
+  if (!hasArticlesLoaded && publishedArticles.length === 0) {
     return (
       <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 max-w-7xl space-y-8">
         <div className="h-10 bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse" />
@@ -156,8 +156,8 @@ export function Home() {
                 src={heroArticle.imageUrl} 
                 alt={heroArticle.title}
                 type="card"
-                loading="lazy"
-                fetchPriority="low"
+                loading="eager"
+                fetchPriority="high"
                 widths={[360, 480, 720, 1080]}
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 70vw, 800px"
                 defaultWidth={720}

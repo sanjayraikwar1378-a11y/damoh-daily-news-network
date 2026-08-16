@@ -55,6 +55,13 @@ function parseFirestoreFields(fields: Record<string, any>): Record<string, any> 
   return result;
 }
 
+// Server-side in-memory caches to minimize Firestore REST latency for SSR and crawlers
+const serverArticleCache = new Map<string, { data: Record<string, any> | null; timestamp: number }>();
+const SERVER_ARTICLE_CACHE_TTL = 60 * 1000; // 60 seconds TTL
+
+let serverFeedCache: { data: Array<Record<string, any>>; timestamp: number } | null = null;
+const SERVER_FEED_CACHE_TTL = 60 * 1000; // 60 seconds TTL
+
 async function getArticleBySlug(slugInput: string): Promise<Record<string, any> | null> {
   if (!slugInput) return null;
   const rawClean = slugInput.trim().split('?')[0].split('#')[0];
@@ -64,6 +71,13 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
     decodedSlug = decodeURIComponent(cleanSlug);
   } catch (e) {
     // ignore decode error
+  }
+
+  // Check in-memory server cache first
+  const cacheKey = cleanSlug.toLowerCase();
+  const cached = serverArticleCache.get(cacheKey) || serverArticleCache.get(decodedSlug.toLowerCase());
+  if (cached && (Date.now() - cached.timestamp < SERVER_ARTICLE_CACHE_TTL)) {
+    return cached.data;
   }
 
   const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
@@ -95,7 +109,14 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
       if (response.ok) {
         const results = await response.json();
         if (Array.isArray(results) && results[0]?.document?.fields) {
-          return parseFirestoreFields(results[0].document.fields);
+          const parsed = parseFirestoreFields(results[0].document.fields);
+          if (parsed) {
+            const entry = { data: parsed, timestamp: Date.now() };
+            serverArticleCache.set(cacheKey, entry);
+            if (parsed.id) serverArticleCache.set(String(parsed.id).toLowerCase(), entry);
+            if (parsed.slug) serverArticleCache.set(String(parsed.slug).toLowerCase(), entry);
+            return parsed;
+          }
         }
       }
     }
@@ -109,16 +130,23 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
     if (docRes.ok) {
       const docData = await docRes.json();
       if (docData?.fields) {
-        return parseFirestoreFields(docData.fields);
+        const parsed = parseFirestoreFields(docData.fields);
+        if (parsed) {
+          const entry = { data: parsed, timestamp: Date.now() };
+          serverArticleCache.set(cacheKey, entry);
+          if (parsed.id) serverArticleCache.set(String(parsed.id).toLowerCase(), entry);
+          if (parsed.slug) serverArticleCache.set(String(parsed.slug).toLowerCase(), entry);
+          return parsed;
+        }
       }
     }
   } catch (err) {
     console.error("Error fetching article from Firestore REST API:", err);
   }
 
-  // Fallback to sample mock articles if firestore returns null
+  // Exact match only against mock fallback if firestore returns null and it explicitly matches the requested slug/id
   const mockMatch = MOCK_ARTICLES_FALLBACK.find(
-    a => a.slug === cleanSlug || a.id === cleanSlug || a.slug === decodedSlug
+    a => (a.slug && a.slug === cleanSlug) || (a.id && a.id === cleanSlug) || (a.slug && a.slug === decodedSlug)
   );
   if (mockMatch) return mockMatch;
 
@@ -126,6 +154,11 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
 }
 
 async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
+  const now = Date.now();
+  if (serverFeedCache && (now - serverFeedCache.timestamp < SERVER_FEED_CACHE_TTL)) {
+    return serverFeedCache.data;
+  }
+
   const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
   const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
 
@@ -144,9 +177,13 @@ async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
-        return data
+        const articles = data
           .map((item: any) => item.document ? parseFirestoreFields(item.document.fields) : null)
           .filter(Boolean);
+        if (articles.length > 0) {
+          serverFeedCache = { data: articles, timestamp: now };
+          return articles;
+        }
       }
     }
   } catch (err) {
@@ -472,6 +509,17 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
     <!-- Google Search Console & News Schema.org JSON-LD -->
     <script type="application/ld+json">${JSON.stringify(jsonLdNewsArticle)}</script>
     <script type="application/ld+json">${JSON.stringify(jsonLdBreadcrumbs)}</script>
+
+    <!-- Initial Article SSR Hydration Data for Instant React Mount with Zero Flicker -->
+    <script id="__INITIAL_ARTICLE__" type="application/json">${JSON.stringify(article).replace(/</g, '\\u003c')}</script>
+    <script>
+      try {
+        var rawArticleEl = document.getElementById('__INITIAL_ARTICLE__');
+        if (rawArticleEl && rawArticleEl.textContent) {
+          window.__INITIAL_ARTICLE__ = JSON.parse(rawArticleEl.textContent);
+        }
+      } catch(e) {}
+    </script>
   `;
 
   const serverRenderedBody = `<div id="root">
@@ -775,6 +823,41 @@ export function createExpressApp() {
       console.error("Error serving article image:", err);
       res.setHeader("Cache-Control", "public, max-age=300");
       return res.redirect(302, DEFAULT_SHARE_IMAGE);
+    }
+  });
+
+  // PWA Service Worker & Manifest Endpoints
+  app.get("/sw.js", (_req, res) => {
+    const swPath = path.resolve(process.cwd(), "public", "sw.js");
+    if (fs.existsSync(swPath)) {
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Service-Worker-Allowed", "/");
+      res.sendFile(swPath);
+    } else {
+      res.status(404).send("// sw not found");
+    }
+  });
+
+  app.get("/manifest.json", (_req, res) => {
+    const manifestPath = path.resolve(process.cwd(), "public", "manifest.json");
+    if (fs.existsSync(manifestPath)) {
+      res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.sendFile(manifestPath);
+    } else {
+      res.status(404).json({ error: "manifest not found" });
+    }
+  });
+
+  app.get(["/icon.svg", "/icon.png", "/icon-192.png", "/icon-512.png"], (req, res) => {
+    const iconPath = path.resolve(process.cwd(), "public", "icon.svg");
+    if (fs.existsSync(iconPath)) {
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+      res.sendFile(iconPath);
+    } else {
+      res.redirect(302, DEFAULT_SHARE_IMAGE);
     }
   });
 

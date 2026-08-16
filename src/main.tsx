@@ -29,13 +29,23 @@ if (rootElement) {
   );
 }
 
-// Register Service Worker for offline shell caching and speed
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      console.warn('Service worker registration failed:', err);
-    });
-  });
+// Proactively unregister any active/legacy Service Worker and clean up SW caches to ensure blazing-fast direct loads
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      registration.unregister().catch(() => {});
+    }
+  }).catch(() => {});
+
+  if ('caches' in window) {
+    caches.keys().then((keys) => {
+      keys.forEach((key) => {
+        if (key.includes('damoh') || key.includes('workbox') || key.includes('sw-')) {
+          caches.delete(key).catch(() => {});
+        }
+      });
+    }).catch(() => {});
+  }
 }
 
 

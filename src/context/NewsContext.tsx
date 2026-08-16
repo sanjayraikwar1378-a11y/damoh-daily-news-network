@@ -9,7 +9,6 @@ import {
   SiteSettings, 
   MarketRates,
   INITIAL_MARKET_RATES,
-  MOCK_ARTICLES, 
   CATEGORIES as INITIAL_CATEGORIES, 
   REPORTERS as INITIAL_REPORTERS, 
   MOCK_ADS, 
@@ -115,9 +114,9 @@ const NewsContext = createContext<NewsContextType | undefined>(undefined);
 export function NewsProvider({ children }: { children: ReactNode }) {
   // Initialize articles with local cache if available for instant initial render
   const [articles, setArticles] = useState<Article[]>(() => getStoredArticlesList());
-  const [hasArticlesLoaded, setHasArticlesLoaded] = useState<boolean>(false);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [reporters, setReporters] = useState<Reporter[]>([]);
+  const [hasArticlesLoaded, setHasArticlesLoaded] = useState<boolean>(() => getStoredArticlesList().length > 0);
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [reporters, setReporters] = useState<Reporter[]>(INITIAL_REPORTERS);
   const [comments, setComments] = useState<Comment[]>([]);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [adSettings, setAdSettings] = useState<AdSettings>(MOCK_ADS);
@@ -125,7 +124,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   const [marketRates, setMarketRates] = useState<MarketRates>(INITIAL_MARKET_RATES);
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [readingHistory, setReadingHistory] = useState<string[]>([]);
-  const [isSyncingFirestore, setIsSyncingFirestore] = useState<boolean>(true);
+  const [isSyncingFirestore, setIsSyncingFirestore] = useState<boolean>(false);
   const [firestoreSyncError, setFirestoreSyncError] = useState<boolean>(false);
   const [syncRetryCount, setSyncRetryCount] = useState<number>(0);
   const [isAdminDataLoaded, setIsAdminDataLoaded] = useState<boolean>(false);
@@ -146,47 +145,28 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('online', handleOnline);
   }, [retryFirestoreSync]);
 
-  // 1. Lightweight Public Real-time Subscriptions (Articles, Categories & Reporters)
+  // 1. Lightweight Public Real-time Articles Subscription + Non-blocking Secondary Sync
   useEffect(() => {
     let unsubArticles = () => {};
-    let unsubCategories = () => {};
-    let unsubReporters = () => {};
     let isMounted = true;
 
-    let hasArticlesLoaded = false;
-    let hasCategoriesLoaded = false;
-    let hasReportersLoaded = false;
-
-    setIsSyncingFirestore(true);
-    setFirestoreSyncError(false);
-
-    // Helper to evaluate if initial snapshot reads have finished
-    const notifyIfInitialSyncDone = () => {
-      if (isMounted && hasArticlesLoaded && hasCategoriesLoaded && hasReportersLoaded) {
-        setIsSyncingFirestore(false);
-        setFirestoreSyncError(false);
-      }
-    };
-
-    // Emergency fallback timer: 4 seconds fallback in case network is disconnected or Firestore fails
-    const emergencyTimer = setTimeout(() => {
+    // Safety timeout: reset syncing state after 3s if slow network occurs
+    const safetyTimer = setTimeout(() => {
       if (isMounted) {
-        if (!hasArticlesLoaded || !hasCategoriesLoaded || !hasReportersLoaded) {
-          console.warn("Firestore sync fallback triggered after 4s");
-          setIsSyncingFirestore(false);
-          setFirestoreSyncError(false); // Do not force error screen, allow direct article fetch to proceed
-        }
+        setIsSyncingFirestore(false);
       }
-    }, 4000);
+    }, 3000);
 
-    // One-time fetch for site, ad, and market settings for public headers & banners
-    const fetchPublicSettingsOnce = async () => {
+    // Non-blocking fetch for site, ad, and market settings
+    const fetchPublicSettings = async () => {
       try {
         const [siteSnap, adsSnap, marketSnap] = await Promise.allSettled([
           getDoc(doc(db, "settings", "site")),
           getDoc(doc(db, "settings", "ads")),
           getDoc(doc(db, "settings", "market"))
         ]);
+
+        if (!isMounted) return;
 
         if (siteSnap.status === 'fulfilled' && siteSnap.value.exists()) {
           setSiteSettings(siteSnap.value.data() as SiteSettings);
@@ -202,12 +182,49 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    fetchPublicSettingsOnce();
+    // Non-blocking one-time fetch for Categories & Reporters
+    const fetchPublicMetadata = async () => {
+      try {
+        const [catSnap, repSnap] = await Promise.allSettled([
+          getDocs(collection(db, "categories")),
+          getDocs(collection(db, "reporters"))
+        ]);
+
+        if (!isMounted) return;
+
+        if (catSnap.status === 'fulfilled' && !catSnap.value.empty) {
+          const list: Category[] = [];
+          catSnap.value.forEach(d => list.push(d.data() as Category));
+          if (list.length > 0) setCategories(list);
+        }
+
+        if (repSnap.status === 'fulfilled' && !repSnap.value.empty) {
+          const list: Reporter[] = [];
+          repSnap.value.forEach(d => {
+            const raw = d.data() as any;
+            const photo = raw.avatar || raw.photoUrl || raw.image || raw.photo || '';
+            list.push({
+              ...raw,
+              id: d.id || raw.id,
+              avatar: photo,
+              photoUrl: photo
+            } as Reporter);
+          });
+          if (list.length > 0) setReporters(list);
+        }
+      } catch (err) {
+        console.warn("Metadata sync notice:", err);
+      }
+    };
+
+    fetchPublicSettings();
+    fetchPublicMetadata();
 
     try {
-      // 1. Articles Sync (Public Real-time with ordering by publishedAt desc)
-      const articlesQuery = query(collection(db, "articles"), orderBy("publishedAt", "desc"), limit(60));
+      // 1. Articles Sync (Top 25 recent articles for rapid mobile payload)
+      const articlesQuery = query(collection(db, "articles"), orderBy("publishedAt", "desc"), limit(25));
       unsubArticles = onSnapshot(articlesQuery, (snap) => {
+        if (!isMounted) return;
         const list: Article[] = [];
         snap.forEach((d) => list.push(d.data() as Article));
         if (list.length > 0) {
@@ -215,70 +232,17 @@ export function NewsProvider({ children }: { children: ReactNode }) {
           setArticles(list);
           saveArticlesToCache(list);
           saveArticlesListToStorage(list);
-        } else {
+        } else if (!getStoredArticlesList().length) {
           setArticles([]);
         }
-        hasArticlesLoaded = true;
         setHasArticlesLoaded(true);
-        notifyIfInitialSyncDone();
+        setIsSyncingFirestore(false);
+        setFirestoreSyncError(false);
       }, (err) => {
         console.warn("Articles listener notice:", err);
         if (isMounted) {
-          hasArticlesLoaded = true;
           setHasArticlesLoaded(true);
-          notifyIfInitialSyncDone();
-        }
-      });
-
-      // 2. Categories Sync (Public Real-time)
-      unsubCategories = onSnapshot(collection(db, "categories"), (snap) => {
-        const list: Category[] = [];
-        snap.forEach((d) => list.push(d.data() as Category));
-        if (list.length > 0) {
-          setCategories(list);
-        } else {
-          setCategories([]);
-          if (snap.empty) {
-            INITIAL_CATEGORIES.forEach((item) => {
-              setDoc(doc(db, "categories", item.id), sanitizeFirestoreData(item)).catch(() => {});
-            });
-          }
-        }
-        hasCategoriesLoaded = true;
-        notifyIfInitialSyncDone();
-      }, (err) => {
-        console.warn("Categories listener notice:", err);
-        if (isMounted) {
-          hasCategoriesLoaded = true;
-          notifyIfInitialSyncDone();
-        }
-      });
-
-      // 3. Reporters Sync (Public Real-time for All Visitors)
-      unsubReporters = onSnapshot(collection(db, "reporters"), (snap) => {
-        const list: Reporter[] = [];
-        snap.forEach((d) => {
-          const raw = d.data() as any;
-          const photo = raw.avatar || raw.photoUrl || raw.image || raw.photo || '';
-          list.push({
-            ...raw,
-            id: d.id || raw.id,
-            avatar: photo,
-            photoUrl: photo
-          } as Reporter);
-        });
-        if (list.length > 0) {
-          setReporters(list);
-        } else {
-          setReporters([]);
-        }
-        hasReportersLoaded = true;
-        notifyIfInitialSyncDone();
-      }, (err) => {
-        console.warn("Reporters listener notice:", err);
-        if (isMounted) {
-          hasReportersLoaded = true;
-          notifyIfInitialSyncDone();
+          setIsSyncingFirestore(false);
         }
       });
 
@@ -286,7 +250,6 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       console.warn("Public listeners warning:", err);
       if (isMounted) {
         setIsSyncingFirestore(false);
-        setFirestoreSyncError(true);
       }
     }
 
@@ -301,10 +264,8 @@ export function NewsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       isMounted = false;
-      clearTimeout(emergencyTimer);
+      clearTimeout(safetyTimer);
       unsubArticles();
-      unsubCategories();
-      unsubReporters();
     };
   }, [syncRetryCount]);
 

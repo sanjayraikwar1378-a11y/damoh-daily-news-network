@@ -24,7 +24,7 @@ import { getOptimizedImageUrl } from "@/lib/cloudinary"
 import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
 import { ResponsiveImage } from "@/components/ResponsiveImage"
 import { LazySection } from "@/components/LazySection"
-import { getCachedArticle, fetchArticleBySlugOrId, saveArticleToCache } from "@/lib/articleCache"
+import { getCachedArticle, fetchArticleBySlugOrId, saveArticleToCache, getSSRArticle, isMatchingArticle, normalizeSlug } from "@/lib/articleCache"
 import { AuthorByline } from "@/components/AuthorByline"
 import { StickyLatestNewsWidget } from "@/components/StickyLatestNewsWidget"
 import { ArticleTextToSpeech } from "@/components/ArticleTextToSpeech"
@@ -86,83 +86,81 @@ export function ArticleDetail() {
   // Extremely robust article matching logic
   const contextArticle = useMemo(() => {
     if (!slug && !decodedSlug) return undefined
-
-    return articles.find(a => {
-      if (!a) return false
-      const aSlug = a.slug || ""
-      const aId = a.id || ""
-
-      // Exact slug or decoded slug match
-      if (aSlug === slug || aSlug === decodedSlug) return true
-
-      // Exact ID match
-      if (aId === slug || aId === decodedSlug) return true
-
-      // Ends with -ID or _ID
-      if (aId && (slug.endsWith(`-${aId}`) || decodedSlug.endsWith(`-${aId}`))) return true
-      if (aId && (slug.endsWith(`_${aId}`) || decodedSlug.endsWith(`_${aId}`))) return true
-
-      // Encoded slug match
-      try {
-        if (encodeURIComponent(aSlug) === slug) return true
-      } catch {}
-
-      // Normalize match (remove special characters and compare)
-      const normSlug = slug.toLowerCase().replace(/[^\w\u0900-\u097F]/g, '')
-      const normASlug = aSlug.toLowerCase().replace(/[^\w\u0900-\u097F]/g, '')
-      if (normSlug && normASlug && (normSlug === normASlug || normASlug.includes(normSlug))) return true
-
-      return false
-    })
+    const key = decodedSlug || slug || ""
+    return articles.find(a => isMatchingArticle(a, key))
   }, [articles, slug, decodedSlug])
 
   // Target key (slug or ID)
   const targetKey = decodedSlug || slug || ""
 
-  // Direct fetch fallback for direct social/Google visitors before context articles load
-  const [directArticle, setDirectArticle] = useState<Article | null>(() => {
-    return getCachedArticle(targetKey) || null
-  })
-  const [isArticleFetchDone, setIsArticleFetchDone] = useState<boolean>(() => {
-    return Boolean(contextArticle || getCachedArticle(targetKey))
-  })
+  // Synchronously resolve initial article from context, SSR script tag, or in-memory cache
+  const initialArticle = useMemo(() => {
+    if (contextArticle && isMatchingArticle(contextArticle, targetKey)) return contextArticle
+    if (!targetKey) return null
+    const cached = getCachedArticle(targetKey)
+    if (cached && isMatchingArticle(cached, targetKey)) return cached
+    const ssr = getSSRArticle()
+    if (ssr && isMatchingArticle(ssr, targetKey)) return ssr
+    return null
+  }, [contextArticle, targetKey])
 
+  // Direct article state to store loaded article data without ever clearing to null
+  const [directArticle, setDirectArticle] = useState<Article | null>(() => initialArticle)
+  const [isArticleFetchDone, setIsArticleFetchDone] = useState<boolean>(() => Boolean(initialArticle))
+
+  // Background fetch to synchronize data from Firestore without showing loading screen
   useEffect(() => {
-    if (contextArticle) {
+    if (!targetKey) {
+      setIsArticleFetchDone(true)
+      return
+    }
+
+    if (contextArticle && isMatchingArticle(contextArticle, targetKey)) {
       setDirectArticle(contextArticle)
       saveArticleToCache(contextArticle)
       setIsArticleFetchDone(true)
       return
     }
 
-    if (!targetKey) {
-      setIsArticleFetchDone(true)
-      return
-    }
-
-    const cached = getCachedArticle(targetKey)
-    if (cached) {
-      setDirectArticle(cached)
-      setIsArticleFetchDone(true)
-      return
-    }
-
     let isMounted = true
-    setIsArticleFetchDone(false)
 
-    fetchArticleBySlugOrId(targetKey).then((art) => {
-      if (isMounted) {
-        if (art) setDirectArticle(art)
-        setIsArticleFetchDone(true)
-      }
-    }).catch(() => {
-      if (isMounted) setIsArticleFetchDone(true)
-    })
+    // Background fetch - NEVER clears existing article state
+    fetchArticleBySlugOrId(targetKey)
+      .then((art) => {
+        if (isMounted) {
+          if (art && isMatchingArticle(art, targetKey)) {
+            setDirectArticle(art)
+            saveArticleToCache(art)
+          }
+          setIsArticleFetchDone(true)
+        }
+      })
+      .catch((err) => {
+        console.warn("Background article sync notice:", err)
+        if (isMounted) {
+          setIsArticleFetchDone(true)
+        }
+      })
 
-    return () => { isMounted = false }
-  }, [contextArticle, targetKey])
+    return () => {
+      isMounted = false
+    }
+  }, [targetKey, contextArticle?.id])
 
-  const article = contextArticle || directArticle
+  // Active article: prefer context -> direct state -> cache -> SSR, ensuring targetKey matches strictly
+  const rawArticle = contextArticle || directArticle || getCachedArticle(targetKey) || getSSRArticle() || null
+  const article = (rawArticle && isMatchingArticle(rawArticle, targetKey)) ? rawArticle : null
+
+  // Strict production assertion to guarantee no mismatched or demo article is rendered
+  useEffect(() => {
+    if (rawArticle && targetKey && !isMatchingArticle(rawArticle, targetKey)) {
+      console.warn("Prevented mismatched article render", {
+        requestedSlug: targetKey,
+        receivedSlug: rawArticle.slug,
+        receivedId: rawArticle.id
+      })
+    }
+  }, [rawArticle, targetKey])
 
   // Ref to prevent multiple view counts on re-renders for the same article ID
   const trackedArticleIdRef = useRef<string | null>(null)
@@ -524,8 +522,8 @@ export function ArticleDetail() {
             src={articleImageUrl} 
             alt={article.title}
             type="article"
-            loading="lazy"
-            fetchPriority="low"
+            loading="eager"
+            fetchPriority="high"
             widths={[360, 480, 720, 1080]}
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 800px"
             defaultWidth={800}
