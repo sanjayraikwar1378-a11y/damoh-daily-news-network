@@ -45,6 +45,8 @@ export const VideoThumbnail = memo(function VideoThumbnail({ youtubeUrl, imageUr
     <img
       src={src}
       alt={title}
+      width={480}
+      height={270}
       loading="lazy"
       decoding="async"
       onError={handleError}

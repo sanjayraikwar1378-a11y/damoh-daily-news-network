@@ -157,7 +157,7 @@ export function AdminReporters() {
                     type="email"
                     value={newEmail}
                     onChange={e => setNewEmail(e.target.value)}
-                    placeholder="rahul@damohdaily.com" 
+                    placeholder="reporter@example.com" 
                   />
                 </div>
 

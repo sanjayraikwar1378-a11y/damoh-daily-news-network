@@ -53,10 +53,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /messages/{document} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
     // Analytics & Events: Public users can record background view/like events, but ONLY authenticated admins can read/list/manage analytics data
     match /analytics_events/{document} {
       allow create: if true;
-      allow read, list, update, delete: if isAdmin();
+      allow read, update, delete: if isAdmin();
     }
 
     match /analytics/{document} {

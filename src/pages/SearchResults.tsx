@@ -18,7 +18,10 @@ export function SearchResults() {
   useEffect(() => {
     setVisibleCount(6)
     if (query.trim()) {
+      document.title = `खोज: ${query.trim()} | दमोह Daily News`
       searchArticlesRemote(query.trim())
+    } else {
+      document.title = "समाचार खोजें | दमोह Daily News"
     }
   }, [query, searchArticlesRemote])
 
@@ -101,14 +104,18 @@ export function SearchResults() {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {visibleResults.map(article => (
+            {visibleResults.map((article, idx) => (
               <Link to={`/article/${article.slug}`} key={article.id} className="group flex flex-col gap-3">
                 <div className="relative aspect-video rounded-xl overflow-hidden shadow-sm bg-zinc-100 dark:bg-zinc-800">
                   <ResponsiveImage 
                     src={article.imageUrl} 
                     alt={article.title}
                     type="card"
-                    loading="lazy"
+                    loading={idx < 2 ? "eager" : "lazy"}
+                    fetchPriority={idx === 0 ? "high" : "auto"}
+                    width={480}
+                    height={270}
+                    aspectRatio="16/9"
                     defaultWidth={480}
                     className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
                   />

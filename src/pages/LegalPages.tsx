@@ -70,7 +70,7 @@ function LegalWrapper({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Side Navigation Menu */}
         <aside className="lg:col-span-3 space-y-2">
-          <div className="sticky top-20 bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-2">
+          <div className="sticky top-36 bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-2">
             <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 px-3 pt-1">
               Legal Documents
             </h2>
@@ -103,12 +103,21 @@ function LegalWrapper({
               <p className="text-[11px] leading-relaxed">
                 Contact our editorial compliance desk at:
               </p>
-              <a 
-                href={`mailto:${siteSettings.contactEmail || "contact@damohdaily.com"}`}
-                className="text-red-600 dark:text-red-400 font-bold hover:underline flex items-center gap-1.5 break-all text-[11px]"
-              >
-                <Mail className="h-3 w-3 shrink-0" /> {siteSettings.contactEmail || "contact@damohdaily.com"}
-              </a>
+              {siteSettings.contactEmail ? (
+                <a 
+                  href={`mailto:${siteSettings.contactEmail}`}
+                  className="text-red-600 dark:text-red-400 font-bold hover:underline flex items-center gap-1.5 break-all text-[11px]"
+                >
+                  <Mail className="h-3 w-3 shrink-0" /> {siteSettings.contactEmail}
+                </a>
+              ) : (
+                <Link 
+                  to="/contact"
+                  className="text-red-600 dark:text-red-400 font-bold hover:underline flex items-center gap-1.5 text-[11px]"
+                >
+                  <Mail className="h-3 w-3 shrink-0" /> Contact Editorial Desk
+                </Link>
+              )}
             </div>
           </div>
         </aside>
@@ -142,7 +151,7 @@ function LegalWrapper({
 export function Disclaimer() {
   const { siteSettings } = useNews()
   const siteName = siteSettings.siteName || "Damoh Daily News Network"
-  const email = siteSettings.contactEmail || "contact@damohdaily.com"
+  const email = siteSettings.contactEmail || ""
 
   return (
     <LegalWrapper title="Disclaimer" lastUpdated="July 29, 2026">
@@ -217,7 +226,7 @@ export function Disclaimer() {
 export function CopyrightPolicy() {
   const { siteSettings } = useNews()
   const siteName = siteSettings.siteName || "Damoh Daily News Network"
-  const email = siteSettings.contactEmail || "contact@damohdaily.com"
+  const email = siteSettings.contactEmail || ""
 
   return (
     <LegalWrapper title="Copyright Policy" lastUpdated="July 29, 2026">
@@ -259,7 +268,7 @@ export function CopyrightPolicy() {
           <li>A statement that you have a good-faith belief that the disputed use is not authorized by the copyright owner.</li>
         </ol>
         <p>
-          Please submit copyright notices directly via our <Link to="/contact" className="text-red-600 dark:text-red-400 font-semibold hover:underline">Contact Page</Link> or email us at <a href={`mailto:${email}`} className="text-red-600 dark:text-red-400 font-semibold hover:underline">{email}</a>.
+          Please submit copyright notices directly via our <Link to="/contact" className="text-red-600 dark:text-red-400 font-semibold hover:underline">Contact Page</Link>{email ? <> or email us at <a href={`mailto:${email}`} className="text-red-600 dark:text-red-400 font-semibold hover:underline">{email}</a></> : null}.
         </p>
       </section>
     </LegalWrapper>
@@ -270,7 +279,7 @@ export function CopyrightPolicy() {
 export function CorrectionsPolicy() {
   const { siteSettings } = useNews()
   const siteName = siteSettings.siteName || "Damoh Daily News Network"
-  const email = siteSettings.contactEmail || "contact@damohdaily.com"
+  const email = siteSettings.contactEmail || ""
 
   return (
     <LegalWrapper title="Corrections Policy" lastUpdated="July 29, 2026">
@@ -291,7 +300,9 @@ export function CorrectionsPolicy() {
           We welcome feedback and error reports from our readers. If you spot a factual error, numerical misstatement, misspelled name, or misquote in any of our published stories, please bring it to our attention:
         </p>
         <ul className="list-disc pl-6 space-y-1.5 text-zinc-700 dark:text-zinc-300">
-          <li>Email our corrections desk at <a href={`mailto:${email}`} className="text-red-600 dark:text-red-400 font-semibold hover:underline">{email}</a>.</li>
+          {email ? (
+            <li>Email our corrections desk at <a href={`mailto:${email}`} className="text-red-600 dark:text-red-400 font-semibold hover:underline">{email}</a>.</li>
+          ) : null}
           <li>Submit a report via our official <Link to="/contact" className="text-red-600 dark:text-red-400 font-semibold hover:underline">Contact Us</Link> page.</li>
         </ul>
         <p>Please include the article headline, publication date, URL link, and specific details about the error.</p>
@@ -424,29 +435,41 @@ export function TermsAndConditions() {
 export function PrivacyPolicy() {
   const { siteSettings } = useNews()
   const siteName = siteSettings.siteName || "Damoh Daily News Network"
-  const email = siteSettings.contactEmail || "contact@damohdaily.com"
+  const email = siteSettings.contactEmail || ""
 
   return (
-    <LegalWrapper title="Privacy Policy" lastUpdated="July 29, 2026">
+    <LegalWrapper title="Privacy Policy" lastUpdated="August 20, 2026">
       <section className="space-y-4">
         <h2 className="text-xl font-bold text-zinc-900 dark:text-white border-b pb-2 border-zinc-200 dark:border-zinc-800">
           1. Information We Collect
         </h2>
         <p>
-          At <strong>{siteName}</strong>, protecting your personal privacy is a top priority. We collect minimal information required to deliver a seamless news experience:
+          At <strong>{siteName}</strong>, protecting your personal privacy is a top priority. When you interact with our website or submit information through our "Contact Us / Send News Tip" (संपर्क करें या समाचार टिप भेजें) form or comment forms, we may collect the following personal details:
         </p>
         <ul className="list-disc pl-6 space-y-1.5 text-zinc-700 dark:text-zinc-300">
-          <li><strong>Voluntary Information:</strong> Name, email address, or mobile number provided when submitting contact forms or comments.</li>
-          <li><strong>Automated Data:</strong> Anonymous usage metrics, IP addresses, browser types, and device analytics to optimize site performance.</li>
+          <li><strong>Full Name (आपका नाम):</strong> Provided voluntarily to identify the sender or contributor.</li>
+          <li><strong>Mobile Number (मोबाइल नंबर):</strong> Provided voluntarily so our editorial team can contact the sender for news verification or follow-up when necessary.</li>
+          <li><strong>Email Address (ईमेल पता):</strong> Provided to send editorial replies, acknowledgments, or clarifications.</li>
+          <li><strong>Message & News Tip Content (समाचार टिप / संदेश):</strong> Details, facts, suggestions, or media information submitted by the user.</li>
+          <li><strong>Automated Data:</strong> Standard anonymous usage metrics, IP addresses, browser types, and device analytics to ensure optimal performance and platform security.</li>
         </ul>
       </section>
 
       <section className="space-y-4">
         <h2 className="text-xl font-bold text-zinc-900 dark:text-white border-b pb-2 border-zinc-200 dark:border-zinc-800">
-          2. How We Use Your Information
+          2. How We Use Submitted Information
         </h2>
         <p>
-          Collected information is strictly used to process news tips, respond to reader inquiries, improve website accessibility, and prevent malicious activity. We do not sell, rent, or lease your personal data to third parties.
+          The information collected through contact forms and news tip submissions is strictly used for legitimate journalistic and administrative purposes:
+        </p>
+        <ul className="list-disc pl-6 space-y-1.5 text-zinc-700 dark:text-zinc-300">
+          <li><strong>Contacting the Sender:</strong> Reaching out to the sender when follow-up or clarification is necessary.</li>
+          <li><strong>Verifying News or Information:</strong> Cross-checking facts, local sources, and authenticating news tips before publication.</li>
+          <li><strong>Reviewing Submitted Content:</strong> Editorial evaluation of suggestions, press releases, or inquiries.</li>
+          <li><strong>Website Administration & Moderation:</strong> Preventing malicious submissions, spam, or abuse, and maintaining editorial standards.</li>
+        </ul>
+        <p className="text-zinc-600 dark:text-zinc-400 text-sm">
+          We respect user privacy and do not sell, rent, lease, or trade your personal contact details to third-party advertisers or commercial entities.
         </p>
       </section>
 
@@ -455,7 +478,7 @@ export function PrivacyPolicy() {
           3. Cookies & Analytics
         </h2>
         <p>
-          We may use cookies and standard web analytics (such as Google Analytics) to analyze web traffic trends and personalize reader experience. You can disable cookies through your browser settings at any time.
+          We may use standard cookies and privacy-respecting analytics to analyze web traffic trends and optimize site speed and layout. You can adjust your browser settings to decline cookies at any time.
         </p>
       </section>
 
@@ -464,7 +487,7 @@ export function PrivacyPolicy() {
           4. Contacting Us Regarding Privacy
         </h2>
         <p>
-          If you have questions regarding this Privacy Policy or wish to request data removal, please contact our data compliance officer at <a href={`mailto:${email}`} className="text-red-600 dark:text-red-400 font-semibold hover:underline">{email}</a> or via our <Link to="/contact" className="text-red-600 dark:text-red-400 font-semibold hover:underline">Contact Page</Link>.
+          If you have questions regarding this Privacy Policy or wish to request data removal, please contact our editorial desk{email ? <> at <a href={`mailto:${email}`} className="text-red-600 dark:text-red-400 font-semibold hover:underline">{email}</a> or</> : null} via our <Link to="/contact" className="text-red-600 dark:text-red-400 font-semibold hover:underline">Contact Page</Link>.
         </p>
       </section>
     </LegalWrapper>

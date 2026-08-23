@@ -39,6 +39,18 @@ export interface MediaItem {
   size?: string;
 }
 
+export type MessageStatus = 'new' | 'read' | 'resolved';
+
+export interface ContactMessage {
+  id: string;
+  fullName: string;
+  mobileNumber: string;
+  email: string;
+  message: string;
+  createdAt: any;
+  status: MessageStatus;
+}
+
 export interface AdSettings {
   googleAdsenseId: string;
   headerAd: { enabled: boolean; imageUrl: string; linkUrl: string; adCode: string };
@@ -145,7 +157,7 @@ export const REPORTERS: Reporter[] = [
     role: 'Founder & Editor, Damoh Daily News', 
     designation1: 'Founder & Editor, Damoh Daily News', 
     designation2: 'District Bureau, Dainik Keshariya Hindustan', 
-    email: 'sanjay@damohdaily.com', 
+    email: '', 
     bio: '' 
   },
   { 
@@ -154,7 +166,7 @@ export const REPORTERS: Reporter[] = [
     avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop', 
     role: 'Special Correspondent (विशेष संवाददाता)', 
     designation1: 'Special Correspondent, Damoh Daily News', 
-    email: 'amit@damohdaily.com', 
+    email: '', 
     bio: '' 
   },
   { 
@@ -163,7 +175,7 @@ export const REPORTERS: Reporter[] = [
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop', 
     role: 'Sub Editor (सब एडिटर)', 
     designation1: 'Sub Editor, Damoh Daily News', 
-    email: 'priya@damohdaily.com', 
+    email: '', 
     bio: '' 
   }
 ];
@@ -176,7 +188,6 @@ export const MOCK_ARTICLES: Article[] = [
     excerpt: 'पिछले 24 घंटों से लगातार हो रही बारिश ने दमोह शहर की रफ्तार रोक दी है। मौसम विभाग ने रेड अलर्ट जारी किया है।',
     content: `दमोह शहर और ग्रामीण अंचलों में पिछले 24 घंटों से रुक-रुक कर हो रही तेज बारिश के कारण जनजीवन पूरी तरह प्रभावित हुआ है। नदी-नाले उफान पर हैं और कई निचले रिहाइशी इलाकों में 2 से 3 फीट तक पानी भर गया है।\n\nकलेक्टर ने आपातकालीन बैठक बुलाकर अधिकारियों को राहत एवं बचाव कार्य में जुटने के निर्देश दिए हैं। होमगार्ड एवं SDRF की टीमों को मुस्तैद रखा गया है। नागालैंड और मारुताल पुलिया पर पानी आने से आवागमन बाधित हो गया है।\n\nनागरिकों से अपील की गई है कि वे जलभराव वाले क्षेत्रों में जाने से बचें तथा आपात स्थिति में कंट्रोल रूम नंबर 07812-222100 पर संपर्क करें।`,
     imageUrl: 'https://images.unsplash.com/photo-1515694346937-94d85e41e6f0?w=800&h=500&fit=crop',
-    youtubeUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     categoryIds: ['c1', 'c17', 'c2'],
     reporterId: 'r1',
     publishedAt: new Date(Date.now() - 3600000).toISOString(),
@@ -288,7 +299,7 @@ export const MOCK_COMMENTS: Comment[] = [
     articleId: 'a1',
     articleTitle: 'दमोह में भारी बारिश से जनजीवन अस्त-व्यस्त',
     userName: 'विकास पटेल',
-    userEmail: 'vikas@gmail.com',
+    userEmail: '',
     content: 'हमारे क्षेत्र मारुताल रोड पर बहुत पानी भरा हुआ है, कृपया नगर पालिका ध्यान दे।',
     createdAt: new Date(Date.now() - 1800000).toISOString(),
     status: 'approved',
@@ -298,7 +309,7 @@ export const MOCK_COMMENTS: Comment[] = [
     articleId: 'a3',
     articleTitle: 'पुलिस ने किया अंतराज्यीय चोर गिरोह का भंडाफोड़',
     userName: 'राकेश शर्मा',
-    userEmail: 'rakesh@gmail.com',
+    userEmail: '',
     content: 'दमोह पुलिस को इस शानदार कार्रवाई के लिए बहुत-बहुत बधाई!',
     createdAt: new Date(Date.now() - 3600000).toISOString(),
     status: 'approved',
@@ -308,7 +319,7 @@ export const MOCK_COMMENTS: Comment[] = [
     articleId: 'a1',
     articleTitle: 'दमोह में भारी बारिश से जनजीवन अस्त-व्यस्त',
     userName: 'सुनील जैन',
-    userEmail: 'sunil@gmail.com',
+    userEmail: '',
     content: 'प्रशासन को नालियों की सफाई पहले ही करवानी चाहिए थी।',
     createdAt: new Date(Date.now() - 900000).toISOString(),
     status: 'pending',
@@ -326,27 +337,27 @@ export const MOCK_MEDIA: MediaItem[] = [
 export const MOCK_ADS: AdSettings = {
   googleAdsenseId: 'pub-2796957315598605',
   headerAd: {
-    enabled: true,
-    imageUrl: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1000&h=120&fit=crop',
-    linkUrl: 'https://example.com/banner-sponsor',
+    enabled: false,
+    imageUrl: '',
+    linkUrl: '',
     adCode: ''
   },
   sidebarAd: {
-    enabled: true,
-    imageUrl: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=400&h=500&fit=crop',
-    linkUrl: 'https://example.com/sidebar-offer',
+    enabled: false,
+    imageUrl: '',
+    linkUrl: '',
     adCode: ''
   },
   articleAd: {
-    enabled: true,
-    imageUrl: 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=800&h=200&fit=crop',
-    linkUrl: 'https://example.com/in-article-ad',
+    enabled: false,
+    imageUrl: '',
+    linkUrl: '',
     adCode: ''
   },
   footerAd: {
-    enabled: true,
-    imageUrl: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1000&h=100&fit=crop',
-    linkUrl: 'https://example.com/footer-sponsor',
+    enabled: false,
+    imageUrl: '',
+    linkUrl: '',
     adCode: ''
   },
   stickyAd: {
@@ -360,19 +371,19 @@ export const MOCK_ADS: AdSettings = {
 export const MOCK_SITE_SETTINGS: SiteSettings = {
   siteName: 'Damoh Daily News Network',
   tagline: 'दमोह एवं मध्य प्रदेश की निष्पक्ष व सटीक खबरें',
-  logoUrl: '',
-  faviconUrl: '',
-  contactEmail: 'contact@damohdaily.com',
-  contactPhone: '+91 9999999999',
-  contactAddress: 'स्टेशन रोड, दमोह (मध्य प्रदेश) - 470661',
-  facebookUrl: 'https://facebook.com/damohdaily',
-  twitterUrl: 'https://twitter.com/damohdaily',
-  instagramUrl: 'https://instagram.com/damohdaily',
-  youtubeUrl: 'https://youtube.com/damohdaily',
-  telegramUrl: 'https://t.me/damohdaily',
-  whatsappNumber: '+919999999999',
-  googleAnalyticsId: 'G-1234567890',
-  searchConsoleMeta: 'google-site-verification=abcdef123456'
+  logoUrl: '/logo.png',
+  faviconUrl: '/favicon-v2.png',
+  contactEmail: 'damohdailynewsnetwork@gmail.com',
+  contactPhone: '',
+  contactAddress: 'दमोह (मध्य प्रदेश) - 470661, भारत',
+  facebookUrl: '',
+  twitterUrl: '',
+  instagramUrl: '',
+  youtubeUrl: '',
+  telegramUrl: '',
+  whatsappNumber: '',
+  googleAnalyticsId: '',
+  searchConsoleMeta: ''
 };
 
 export const MOCK_WEATHER = {

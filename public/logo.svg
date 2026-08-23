@@ -1,0 +1,300 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 512" width="1024" height="512">
+  <defs>
+    <!-- Background Vignette -->
+    <radialGradient id="darkBackdrop" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#0a0a0a" />
+      <stop offset="70%" stop-color="#000000" />
+      <stop offset="100%" stop-color="#000000" />
+    </radialGradient>
+
+    <!-- Chrome Metallic Rim Gradients -->
+    <linearGradient id="chromeBevelTop" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="18%" stop-color="#E2E8F0" />
+      <stop offset="42%" stop-color="#94A3B8" />
+      <stop offset="50%" stop-color="#475569" />
+      <stop offset="75%" stop-color="#CBD5E1" />
+      <stop offset="90%" stop-color="#F8FAFC" />
+      <stop offset="100%" stop-color="#334155" />
+    </linearGradient>
+
+    <linearGradient id="chromeBevelAngle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="25%" stop-color="#CBD5E1" />
+      <stop offset="50%" stop-color="#64748B" />
+      <stop offset="75%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <!-- Crimson Shield Woodgrain Texture Gradient -->
+    <linearGradient id="crimsonWoodGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#800A10" />
+      <stop offset="20%" stop-color="#A5101A" />
+      <stop offset="45%" stop-color="#6E080E" />
+      <stop offset="70%" stop-color="#50050A" />
+      <stop offset="90%" stop-color="#380306" />
+      <stop offset="100%" stop-color="#240204" />
+    </linearGradient>
+
+    <!-- Globe Sphere Shading -->
+    <radialGradient id="globeSphere" cx="42%" cy="38%" r="58%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="30%" stop-color="#E2E8F0" />
+      <stop offset="60%" stop-color="#94A3B8" />
+      <stop offset="85%" stop-color="#475569" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </radialGradient>
+
+    <!-- 3D Red DAMOH Text Gradient -->
+    <linearGradient id="redTextGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF4D5E" />
+      <stop offset="25%" stop-color="#E6192A" />
+      <stop offset="55%" stop-color="#B30F1D" />
+      <stop offset="80%" stop-color="#7A0811" />
+      <stop offset="100%" stop-color="#4D0308" />
+    </linearGradient>
+
+    <!-- 3D Silver DAILY & NEWS NETWORK Gradient -->
+    <linearGradient id="silverTextGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="22%" stop-color="#F1F5F9" />
+      <stop offset="48%" stop-color="#E2E8F0" />
+      <stop offset="52%" stop-color="#94A3B8" />
+      <stop offset="78%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#F8FAFC" />
+    </linearGradient>
+
+    <!-- Quill Feather Gradient -->
+    <linearGradient id="quillGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3849" />
+      <stop offset="35%" stop-color="#D61324" />
+      <stop offset="75%" stop-color="#7A0812" />
+      <stop offset="100%" stop-color="#3D0206" />
+    </linearGradient>
+
+    <!-- 3D Depth Shadows -->
+    <filter id="shieldShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.9" />
+    </filter>
+
+    <filter id="textPopShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000000" flood-opacity="0.85" />
+    </filter>
+  </defs>
+
+  <!-- Background Base: Fully transparent with no black box -->
+
+  <g filter="url(#shieldShadow)">
+
+    <!-- ======================================================== -->
+    <!-- 1. TOP CIRCULAR ARCH & GLOBE CASING                      -->
+    <!-- ======================================================== -->
+    <!-- Outer Arch -->
+    <path d="M 330 180 C 330 50, 694 50, 694 180 Z" fill="url(#chromeBevelTop)" stroke="#0F172A" stroke-width="2" />
+    <path d="M 340 180 C 340 64, 684 64, 684 180 Z" fill="#1C0204" />
+    <path d="M 348 180 C 348 76, 676 76, 676 180 Z" fill="url(#crimsonWoodGrad)" />
+    
+    <!-- Chrome Inner Arch Rings -->
+    <circle cx="512" cy="180" r="160" fill="none" stroke="url(#chromeBevelTop)" stroke-width="14" />
+    <circle cx="512" cy="180" r="148" fill="none" stroke="#1E293B" stroke-width="3" />
+
+    <!-- ======================================================== -->
+    <!-- 2. GLOBE WITH WORLD CONTINENTS & LAT/LONG COORDINATES    -->
+    <!-- ======================================================== -->
+    <g transform="translate(512, 180)">
+      <!-- Globe Shaded Sphere -->
+      <circle cx="0" cy="0" r="144" fill="url(#globeSphere)" />
+      
+      <!-- Coordinate Grid Lines -->
+      <ellipse cx="0" cy="0" rx="144" ry="42" fill="none" stroke="#64748B" stroke-width="1.8" opacity="0.6" />
+      <ellipse cx="0" cy="-55" rx="133" ry="28" fill="none" stroke="#64748B" stroke-width="1.5" opacity="0.5" />
+      <ellipse cx="0" cy="55" rx="133" ry="28" fill="none" stroke="#64748B" stroke-width="1.5" opacity="0.5" />
+      
+      <ellipse cx="0" cy="0" rx="46" ry="144" fill="none" stroke="#64748B" stroke-width="1.8" opacity="0.6" />
+      <ellipse cx="0" cy="0" rx="96" ry="144" fill="none" stroke="#64748B" stroke-width="1.8" opacity="0.5" />
+      <line x1="-144" y1="0" x2="144" y2="0" stroke="#64748B" stroke-width="2" opacity="0.7" />
+      <line x1="0" y1="-144" x2="0" y2="144" stroke="#64748B" stroke-width="2" opacity="0.7" />
+
+      <!-- World Continents (White / Silver Embossed) -->
+      <!-- Eurasia & India -->
+      <path d="M 10 -70 C 25 -80, 50 -75, 75 -55 C 98 -35, 88 -8, 65 8 C 48 18, 22 22, 12 38 C 6 46, -8 28, -4 14 C 0 -12, -22 -26, -12 -48 C -2 -62, -6 -65, 10 -70 Z" fill="#FFFFFF" opacity="0.8" />
+      <!-- Africa / Middle East -->
+      <path d="M -28 -18 C -12 -22, 2 -12, -4 12 C -8 32, -4 62, -18 82 C -32 92, -42 72, -38 42 C -42 16, -38 -8, -28 -18 Z" fill="#FFFFFF" opacity="0.8" />
+      <!-- North & South America -->
+      <path d="M -115 -62 C -92 -56, -82 -32, -96 -12 C -112 4, -86 32, -92 62 C -102 82, -116 66, -112 42 C -106 22, -126 -4, -120 -42 Z" fill="#FFFFFF" opacity="0.75" />
+      <!-- Australia & Pacific -->
+      <path d="M 86 46 C 106 42, 116 62, 102 76 C 82 82, 76 62, 86 46 Z" fill="#FFFFFF" opacity="0.8" />
+      
+      <!-- Outer Globe Specular Rim -->
+      <circle cx="0" cy="0" r="144" fill="none" stroke="#FFFFFF" stroke-width="3.5" opacity="0.85" />
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 3. SATELLITE DISH (TOP RIGHT AT ~2 O'CLOCK)              -->
+    <!-- ======================================================== -->
+    <g transform="translate(605, 68) rotate(16)">
+      <!-- Mount Strut -->
+      <line x1="0" y1="26" x2="0" y2="46" stroke="#CBD5E1" stroke-width="4.5" />
+      <circle cx="0" cy="46" r="4.5" fill="#475569" />
+      <!-- Parabolic Dish -->
+      <path d="M -28 14 C -22 -16, 22 -16, 28 14 C 16 18, -16 18, -28 14 Z" fill="url(#chromeBevelTop)" stroke="#0F172A" stroke-width="1.5" />
+      <!-- Feed Horn & Red Indicator Tip -->
+      <line x1="0" y1="4" x2="0" y2="-14" stroke="#FFFFFF" stroke-width="3" />
+      <circle cx="0" cy="-14" r="4" fill="#EF4444" stroke="#FFFFFF" stroke-width="1" />
+      <line x1="-18" y1="10" x2="0" y2="-14" stroke="#94A3B8" stroke-width="1.2" />
+      <line x1="18" y1="10" x2="0" y2="-14" stroke="#94A3B8" stroke-width="1.2" />
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 4. 3D EMBOSSED RED 'D' MONOGRAM (CENTER GLOBE)           -->
+    <!-- ======================================================== -->
+    <g transform="translate(512, 174)" filter="url(#textPopShadow)">
+      <!-- 'D' Shadow / Bevel Base -->
+      <path d="M -92 -66 L -10 -66 C 46 -66, 82 -36, 82 0 C 82 36, 46 66, -10 66 L -92 66 Z" fill="#240204" />
+      <!-- 'D' Crimson Face Plate -->
+      <path d="M -88 -62 L -12 -62 C 42 -62, 76 -32, 76 0 C 76 32, 42 62, -12 62 L -88 62 Z" fill="url(#crimsonWoodGrad)" stroke="#FFA3A3" stroke-width="2.5" />
+      <!-- 'D' Inner Cutout -->
+      <path d="M -62 -36 L -16 -36 C 18 -36, 44 -18, 44 0 C 44 18, 18 36, -16 36 L -62 36 Z" fill="#1C0204" stroke="#FFA3A3" stroke-width="2" />
+      <!-- Top Chrome Highlight -->
+      <path d="M -88 -62 L 0 -62 C 44 -62, 76 -30, 76 0" fill="none" stroke="#FFFFFF" stroke-width="3.5" opacity="0.9" />
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 5. CRIMSON QUILL FEATHER PEN                             -->
+    <!-- ======================================================== -->
+    <g transform="translate(585, 94) rotate(-32)" filter="url(#textPopShadow)">
+      <!-- Feather Body -->
+      <path d="M 0 -72 C 20 -46, 28 12, 0 102 C -28 12, -20 -46, 0 -72 Z" fill="url(#quillGrad)" stroke="#3D0206" stroke-width="2" />
+      <!-- Feather Details -->
+      <path d="M 0 -62 C 14 -36, 20 10, 0 82 C -20 10, -14 -36, 0 -62 Z" fill="none" stroke="#FFA3A3" stroke-width="1.5" opacity="0.6" />
+      <!-- Shaft / Quill Rachis -->
+      <line x1="0" y1="-76" x2="0" y2="122" stroke="#FFFFFF" stroke-width="3" />
+      <!-- Chrome Pen Nib -->
+      <path d="M -6 112 L 6 112 L 0 134 Z" fill="url(#chromeBevelTop)" stroke="#1E293B" stroke-width="1" />
+      <line x1="0" y1="112" x2="0" y2="130" stroke="#0F172A" stroke-width="1" />
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 6. HORIZONTAL SHIELD / PLAQUE STRUCTURE                  -->
+    <!-- ======================================================== -->
+    <!-- Outer Heavy Chrome Beveled Shield -->
+    <path d="M 68 185 
+             L 320 185 
+             C 335 155, 365 140, 400 140 
+             L 624 140 
+             C 659 140, 689 155, 704 185 
+             L 956 185 
+             C 972 185, 984 198, 984 214 
+             L 984 390 
+             C 984 406, 972 418, 956 418 
+             L 590 418 
+             L 512 458 
+             L 434 418 
+             L 68 418 
+             C 52 418, 40 406, 40 390 
+             L 40 214 
+             C 40 198, 52 185, 68 185 Z" 
+          fill="url(#chromeBevelTop)" 
+          stroke="#0F172A" 
+          stroke-width="3.5" />
+
+    <!-- Dark Inner Recess Groove -->
+    <path d="M 74 192 
+             L 322 192 
+             C 338 162, 368 147, 402 147 
+             L 622 147 
+             C 656 147, 686 162, 702 192 
+             L 950 192 
+             C 962 192, 972 202, 972 214 
+             L 972 384 
+             C 972 396, 962 406, 950 406 
+             L 585 406 
+             L 512 444 
+             L 439 406 
+             L 74 406 
+             C 62 406, 52 396, 52 384 
+             L 52 214 
+             C 52 202, 62 192, 74 192 Z" 
+          fill="#1A0204" />
+
+    <!-- Crimson Woodgrain Front Plaque -->
+    <path d="M 80 198 
+             L 324 198 
+             C 340 170, 370 154, 404 154 
+             L 620 154 
+             C 654 154, 684 170, 700 198 
+             L 944 198 
+             C 954 198, 962 206, 962 216 
+             L 962 378 
+             C 962 388, 954 396, 944 396 
+             L 580 396 
+             L 512 432 
+             L 444 396 
+             L 80 396 
+             C 70 396, 62 388, 62 378 
+             L 62 216 
+             C 62 206, 70 198, 80 198 Z" 
+          fill="url(#crimsonWoodGrad)" />
+
+    <!-- Woodgrain Grain Lines -->
+    <g opacity="0.16" stroke="#000000" stroke-width="1.5">
+      <line x1="70" y1="215" x2="950" y2="215" />
+      <line x1="70" y1="235" x2="950" y2="235" />
+      <line x1="70" y1="255" x2="950" y2="255" />
+      <line x1="70" y1="275" x2="950" y2="275" />
+      <line x1="70" y1="295" x2="950" y2="295" />
+      <line x1="70" y1="315" x2="950" y2="315" />
+      <line x1="70" y1="335" x2="950" y2="335" />
+      <line x1="70" y1="355" x2="950" y2="355" />
+      <line x1="70" y1="375" x2="950" y2="375" />
+    </g>
+
+    <!-- Top Metallic Edge Reflection Highlight -->
+    <line x1="82" y1="200" x2="942" y2="200" stroke="#FFA3A3" stroke-width="2" opacity="0.6" />
+
+    <!-- Horizontal Chrome Divider Bar -->
+    <g filter="url(#textPopShadow)">
+      <polygon points="90,328 934,328 920,344 104,344" fill="url(#chromeBevelTop)" stroke="#475569" stroke-width="1.5" />
+      <polygon points="95,330 929,330 923,334 101,334" fill="#FFFFFF" opacity="0.9" />
+    </g>
+
+    <!-- 7. 3D CHISELED TYPOGRAPHY: DAMOH (3D RED) + DAILY (3D SILVER) -->
+    <g transform="translate(512, 298)">
+      
+      <!-- DAMOH (3D RED) -->
+      <!-- Red 3D Extrusion Shadows -->
+      <text x="-15" y="7" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#240204" text-anchor="end" letter-spacing="3">DAMOH</text>
+      <text x="-15" y="4" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#4D0308" text-anchor="end" letter-spacing="3">DAMOH</text>
+      <text x="-15" y="2" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#7A0811" text-anchor="end" letter-spacing="3">DAMOH</text>
+      
+      <!-- Red 3D Front Face -->
+      <text x="-15" y="0" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="url(#redTextGrad)" stroke="#FFA3A3" stroke-width="1.8" text-anchor="end" letter-spacing="3">DAMOH</text>
+      <!-- Red Top White Reflection -->
+      <text x="-15" y="-1" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.8" text-anchor="end" letter-spacing="3">DAMOH</text>
+
+
+      <!-- DAILY (3D SILVER / WHITE) -->
+      <!-- Silver 3D Extrusion Shadows -->
+      <text x="15" y="7" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#1C0204" text-anchor="start" letter-spacing="3">DAILY</text>
+      <text x="15" y="4" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#475569" text-anchor="start" letter-spacing="3">DAILY</text>
+      <text x="15" y="2" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#64748B" text-anchor="start" letter-spacing="3">DAILY</text>
+      
+      <!-- Silver 3D Front Face -->
+      <text x="15" y="0" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="url(#silverTextGrad)" stroke="#FFFFFF" stroke-width="2" text-anchor="start" letter-spacing="3">DAILY</text>
+      <!-- Silver Top White Reflection -->
+      <text x="15" y="-1" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="none" stroke="#FFFFFF" stroke-width="1.2" opacity="0.9" text-anchor="start" letter-spacing="3">DAILY</text>
+
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 8. "NEWS NETWORK" SILVER BLOCK TEXT (LOWER RIBBON)       -->
+    <!-- ======================================================== -->
+    <g transform="translate(512, 400)" filter="url(#textPopShadow)">
+      <!-- 3D Shadow -->
+      <text x="0" y="4" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="54" fill="#1A0204" text-anchor="middle" letter-spacing="12">NEWS NETWORK</text>
+      <!-- Silver Front Face -->
+      <text x="0" y="0" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="54" fill="url(#silverTextGrad)" stroke="#FFFFFF" stroke-width="1.2" text-anchor="middle" letter-spacing="12">NEWS NETWORK</text>
+    </g>
+
+  </g>
+</svg>

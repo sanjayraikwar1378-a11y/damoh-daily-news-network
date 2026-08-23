@@ -14,7 +14,7 @@ export function enrichReporter(reporter?: Partial<Reporter> | null, authorNameFa
       role: reporter?.role || 'Founder & Editor, Damoh Daily News',
       designation1: reporter?.designation1 || 'Founder & Editor, Damoh Daily News',
       designation2: reporter?.designation2 || 'District Bureau, Dainik Keshariya Hindustan',
-      email: reporter?.email || 'sanjay@damohdaily.com',
+      email: reporter?.email || '',
       bio: ''
     };
   }

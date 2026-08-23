@@ -7,11 +7,13 @@ import { lazy, Suspense } from "react"
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { MainLayout } from "./components/layout/MainLayout"
-import { AdminLayout } from "./components/layout/AdminLayout"
 import { Home } from "./pages/Home"
 import { NewsProvider } from "./context/NewsContext"
 import { WeatherProvider } from "./context/WeatherContext"
 import { ScrollToTop } from "./components/ScrollToTop"
+
+// Lazy-loaded Admin Layout
+const AdminLayout = lazy(() => import("./components/layout/AdminLayout").then(m => ({ default: m.AdminLayout })))
 
 // Lazy-loaded pages for code splitting & bundle optimization
 const ArticleDetail = lazy(() => import("./pages/ArticleDetail").then(m => ({ default: m.ArticleDetail })))
@@ -42,6 +44,7 @@ const AdminAds = lazy(() => import("./pages/AdminAds").then(m => ({ default: m.A
 const AdminSEO = lazy(() => import("./pages/AdminSEO").then(m => ({ default: m.AdminSEO })))
 const AdminSettings = lazy(() => import("./pages/AdminSettings").then(m => ({ default: m.AdminSettings })))
 const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics").then(m => ({ default: m.AdminAnalytics })))
+const AdminMessages = lazy(() => import("./pages/AdminMessages").then(m => ({ default: m.AdminMessages })))
 
 function PageLoader() {
   return (
@@ -73,6 +76,13 @@ export default function App() {
                   <Route path="search" element={<SearchResults />} />
                   <Route path="bookmarks" element={<UserBookmarks />} />
                   <Route path="contact" element={<ContactUs />} />
+                  <Route path="contact-us" element={<ContactUs />} />
+                  <Route path="send-news-tip" element={<ContactUs />} />
+                  <Route path="send-tip" element={<ContactUs />} />
+                  <Route path="news-tip" element={<ContactUs />} />
+                  <Route path="news-tips" element={<ContactUs />} />
+                  <Route path="submit-news" element={<ContactUs />} />
+                  <Route path="feedback" element={<ContactUs />} />
                   <Route path="about" element={<AboutUs />} />
                   <Route path="about-us" element={<AboutUs />} />
                   <Route path="disclaimer" element={<Disclaimer />} />
@@ -86,6 +96,7 @@ export default function App() {
                 
                 <Route path="/admin" element={<AdminLayout />}>
                   <Route index element={<AdminDashboard />} />
+                  <Route path="messages" element={<AdminMessages />} />
                   <Route path="create" element={<AdminCreateNews />} />
                   <Route path="edit/:id" element={<AdminCreateNews />} />
                   <Route path="news" element={<AdminNews />} />

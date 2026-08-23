@@ -1,421 +1,710 @@
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import toIco from 'to-ico';
+import { execSync } from 'child_process';
 
-// Build the exact approved Damoh Daily News Logo SVG
-const svgWidth = 1024;
-const svgHeight = 1024;
-
-const baseSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+/**
+ * Official Damoh Daily News Network 3D Emblem Vector Logo
+ * Precision crafted to exactly match the uploaded official logo:
+ * - 3D Crimson Red "DAMOH" + 3D Silver "DAILY"
+ * - High-detail spherical globe with world continents & satellite dish
+ * - Red quill feather pen with metallic nib
+ * - Crimson woodgrain shield with multi-tier chrome bevel border
+ * - "NEWS NETWORK" silver block text on bottom plate
+ * - Dark backdrop matching original asset
+ */
+export const officialLogoSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 512" width="1024" height="512">
   <defs>
-    <!-- Gradients -->
-    <linearGradient id="outerRedFrame" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF1A1A" />
-      <stop offset="30%" stop-color="#D60000" />
-      <stop offset="70%" stop-color="#A80000" />
-      <stop offset="100%" stop-color="#660000" />
-    </linearGradient>
+    <!-- Background Vignette -->
+    <radialGradient id="darkBackdrop" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#0a0a0a" />
+      <stop offset="70%" stop-color="#000000" />
+      <stop offset="100%" stop-color="#000000" />
+    </radialGradient>
 
-    <linearGradient id="frameBevel" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.8" />
-      <stop offset="15%" stop-color="#FFFFFF" stop-opacity="0.1" />
-      <stop offset="85%" stop-color="#000000" stop-opacity="0.2" />
-      <stop offset="100%" stop-color="#000000" stop-opacity="0.6" />
-    </linearGradient>
-
-    <linearGradient id="innerCardBg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#EBF4FA" />
-      <stop offset="45%" stop-color="#FFFFFF" />
-      <stop offset="100%" stop-color="#F2F5F8" />
-    </linearGradient>
-
-    <linearGradient id="redBannerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#B30000" />
-      <stop offset="25%" stop-color="#E60000" />
-      <stop offset="50%" stop-color="#FF2626" />
-      <stop offset="75%" stop-color="#E60000" />
-      <stop offset="100%" stop-color="#990000" />
-    </linearGradient>
-
-    <linearGradient id="newsRedBadge" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF1E1E" />
-      <stop offset="50%" stop-color="#D80000" />
-      <stop offset="100%" stop-color="#8A0000" />
-    </linearGradient>
-
-    <linearGradient id="silverPlate" x1="0%" y1="0%" x2="0%" y2="100%">
+    <!-- Chrome Metallic Rim Gradients -->
+    <linearGradient id="chromeBevelTop" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#FFFFFF" />
-      <stop offset="50%" stop-color="#F3F4F6" />
-      <stop offset="100%" stop-color="#E5E7EB" />
+      <stop offset="18%" stop-color="#E2E8F0" />
+      <stop offset="42%" stop-color="#94A3B8" />
+      <stop offset="50%" stop-color="#475569" />
+      <stop offset="75%" stop-color="#CBD5E1" />
+      <stop offset="90%" stop-color="#F8FAFC" />
+      <stop offset="100%" stop-color="#334155" />
     </linearGradient>
 
-    <linearGradient id="goldPin" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FFE600" />
-      <stop offset="100%" stop-color="#E6A100" />
+    <linearGradient id="chromeBevelAngle" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="25%" stop-color="#CBD5E1" />
+      <stop offset="50%" stop-color="#64748B" />
+      <stop offset="75%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#1E293B" />
     </linearGradient>
 
-    <linearGradient id="bottomCapsuleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#800000" />
-      <stop offset="50%" stop-color="#A80000" />
-      <stop offset="100%" stop-color="#6E0000" />
+    <!-- Crimson Shield Woodgrain Texture Gradient -->
+    <linearGradient id="crimsonWoodGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#800A10" />
+      <stop offset="20%" stop-color="#A5101A" />
+      <stop offset="45%" stop-color="#6E080E" />
+      <stop offset="70%" stop-color="#50050A" />
+      <stop offset="90%" stop-color="#380306" />
+      <stop offset="100%" stop-color="#240204" />
     </linearGradient>
 
-    <linearGradient id="micMetal" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4A4A4A" />
-      <stop offset="50%" stop-color="#1F1F1F" />
-      <stop offset="100%" stop-color="#0A0A0A" />
+    <!-- Globe Sphere Shading -->
+    <radialGradient id="globeSphere" cx="42%" cy="38%" r="58%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="30%" stop-color="#E2E8F0" />
+      <stop offset="60%" stop-color="#94A3B8" />
+      <stop offset="85%" stop-color="#475569" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </radialGradient>
+
+    <!-- 3D Red DAMOH Text Gradient -->
+    <linearGradient id="redTextGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF4D5E" />
+      <stop offset="25%" stop-color="#E6192A" />
+      <stop offset="55%" stop-color="#B30F1D" />
+      <stop offset="80%" stop-color="#7A0811" />
+      <stop offset="100%" stop-color="#4D0308" />
     </linearGradient>
 
-    <linearGradient id="palaceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#D9A05B" />
-      <stop offset="50%" stop-color="#C2843E" />
-      <stop offset="100%" stop-color="#8C531B" />
+    <!-- 3D Silver DAILY & NEWS NETWORK Gradient -->
+    <linearGradient id="silverTextGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="22%" stop-color="#F1F5F9" />
+      <stop offset="48%" stop-color="#E2E8F0" />
+      <stop offset="52%" stop-color="#94A3B8" />
+      <stop offset="78%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#F8FAFC" />
     </linearGradient>
 
-    <filter id="dropShadow" x="-10%" y="-10%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#000000" flood-opacity="0.45" />
+    <!-- Quill Feather Gradient -->
+    <linearGradient id="quillGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3849" />
+      <stop offset="35%" stop-color="#D61324" />
+      <stop offset="75%" stop-color="#7A0812" />
+      <stop offset="100%" stop-color="#3D0206" />
+    </linearGradient>
+
+    <!-- 3D Depth Shadows -->
+    <filter id="shieldShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.9" />
     </filter>
 
-    <filter id="text3d" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="6" stdDeviation="2" flood-color="#550000" flood-opacity="0.9" />
-      <feDropShadow dx="0" dy="10" stdDeviation="5" flood-color="#000000" flood-opacity="0.5" />
-    </filter>
-
-    <filter id="badgeShadow" x="-15%" y="-15%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#000000" flood-opacity="0.35" />
+    <filter id="textPopShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000000" flood-opacity="0.85" />
     </filter>
   </defs>
 
-  <!-- 1. Outer Container: Rounded Square with 3D Glossy Red Frame -->
-  <rect x="16" y="16" width="992" height="992" rx="200" fill="url(#outerRedFrame)" />
-  <rect x="16" y="16" width="992" height="992" rx="200" fill="url(#frameBevel)" />
-  
-  <!-- Outer metallic stroke -->
-  <rect x="24" y="24" width="976" height="976" rx="192" fill="none" stroke="#FFA3A3" stroke-width="6" opacity="0.6" />
-  <rect x="36" y="36" width="952" height="952" rx="180" fill="none" stroke="#4A0000" stroke-width="4" opacity="0.8" />
+  <!-- Background Base: Fully transparent with no black box -->
 
-  <!-- 2. Inner White Content Area -->
-  <rect x="48" y="48" width="928" height="928" rx="168" fill="url(#innerCardBg)" />
-  
-  <!-- Halftone / Dot pattern in sky area -->
-  <g opacity="0.07">
-    <circle cx="200" cy="120" r="3" fill="#000" /><circle cx="240" cy="120" r="3" fill="#000" /><circle cx="280" cy="120" r="3" fill="#000" /><circle cx="320" cy="120" r="3" fill="#000" />
-    <circle cx="220" cy="140" r="3" fill="#000" /><circle cx="260" cy="140" r="3" fill="#000" /><circle cx="300" cy="140" r="3" fill="#000" /><circle cx="340" cy="140" r="3" fill="#000" />
-    <circle cx="200" cy="160" r="3" fill="#000" /><circle cx="240" cy="160" r="3" fill="#000" /><circle cx="280" cy="160" r="3" fill="#000" /><circle cx="320" cy="160" r="3" fill="#000" />
-    <circle cx="680" cy="120" r="3" fill="#000" /><circle cx="720" cy="120" r="3" fill="#000" /><circle cx="760" cy="120" r="3" fill="#000" />
-    <circle cx="700" cy="140" r="3" fill="#000" /><circle cx="740" cy="140" r="3" fill="#000" /><circle cx="780" cy="140" r="3" fill="#000" />
-  </g>
+  <g filter="url(#shieldShadow)">
 
-  <!-- ========================================== -->
-  <!-- TOP SECTION: Palace (Left), MP Map (Center), Mic (Right) -->
-  <!-- ========================================== -->
-
-  <!-- Top Left: Heritage Domed Palace with trees -->
-  <g transform="translate(68, 70)">
-    <!-- Palace Background / Trees -->
-    <path d="M10 260 Q 40 210, 80 230 Q 130 200, 180 230 Q 230 210, 270 260 Z" fill="#2E6930" opacity="0.9" />
-    <path d="M30 270 Q 70 230, 120 250 Q 170 220, 220 250 Q 260 230, 290 270 Z" fill="#1B4D20" />
+    <!-- ======================================================== -->
+    <!-- 1. TOP CIRCULAR ARCH & GLOBE CASING                      -->
+    <!-- ======================================================== -->
+    <!-- Outer Arch -->
+    <path d="M 330 180 C 330 50, 694 50, 694 180 Z" fill="url(#chromeBevelTop)" stroke="#0F172A" stroke-width="2" />
+    <path d="M 340 180 C 340 64, 684 64, 684 180 Z" fill="#1C0204" />
+    <path d="M 348 180 C 348 76, 676 76, 676 180 Z" fill="url(#crimsonWoodGrad)" />
     
-    <!-- Left Small Dome Tower -->
-    <rect x="25" y="195" width="45" height="75" fill="url(#palaceGrad)" rx="2" />
-    <path d="M47.5 140 C 30 160, 20 180, 25 195 H 70 C 75 180, 65 160, 47.5 140 Z" fill="#D9A05B" />
-    <path d="M47.5 125 V 140 M45 128 H50" stroke="#8C531B" stroke-width="2" />
-    <path d="M35 210 A 10 15 0 0 1 55 210 V 235 H 35 Z" fill="#422507" />
-    <path d="M35 245 A 10 15 0 0 1 55 245 V 270 H 35 Z" fill="#422507" />
+    <!-- Chrome Inner Arch Rings -->
+    <circle cx="512" cy="180" r="160" fill="none" stroke="url(#chromeBevelTop)" stroke-width="14" />
+    <circle cx="512" cy="180" r="148" fill="none" stroke="#1E293B" stroke-width="3" />
 
-    <!-- Main Central Grand Dome -->
-    <rect x="80" y="170" width="105" height="100" fill="url(#palaceGrad)" rx="3" />
-    <!-- Arches on central building -->
-    <path d="M92 195 A 12 18 0 0 1 116 195 V 225 H 92 Z" fill="#422507" />
-    <path d="M122 195 A 12 18 0 0 1 146 195 V 225 H 122 Z" fill="#422507" />
-    <path d="M152 195 A 12 18 0 0 1 176 195 V 225 H 152 Z" fill="#422507" />
-    <path d="M92 238 A 12 18 0 0 1 116 238 V 268 H 92 Z" fill="#422507" />
-    <path d="M122 238 A 12 18 0 0 1 146 238 V 268 H 122 Z" fill="#422507" />
-    <path d="M152 238 A 12 18 0 0 1 176 238 V 268 H 152 Z" fill="#422507" />
-    <!-- Central Dome Structure -->
-    <path d="M132.5 70 C 95 105, 80 135, 80 170 H 185 C 185 135, 170 105, 132.5 70 Z" fill="#E5B26E" stroke="#8C531B" stroke-width="1.5" />
-    <path d="M132.5 45 V 70 M128 52 H137" stroke="#8C531B" stroke-width="3" />
-    <!-- Small pillars/chhatri around dome -->
-    <line x1="88" y1="170" x2="88" y2="155" stroke="#C2843E" stroke-width="3" />
-    <line x1="177" y1="170" x2="177" y2="155" stroke="#C2843E" stroke-width="3" />
-
-    <!-- Right Dome Tower -->
-    <rect x="195" y="195" width="55" height="75" fill="url(#palaceGrad)" rx="2" />
-    <path d="M222.5 140 C 205 160, 195 180, 200 195 H 245 C 250 180, 240 160, 222.5 140 Z" fill="#D9A05B" />
-    <path d="M222.5 125 V 140 M220 128 H225" stroke="#8C531B" stroke-width="2" />
-    <path d="M210 210 A 10 15 0 0 1 230 210 V 235 H 210 Z" fill="#422507" />
-    <path d="M210 245 A 10 15 0 0 1 230 245 V 270 H 210 Z" fill="#422507" />
-
-    <!-- Balcony Railings -->
-    <line x1="20" y1="195" x2="255" y2="195" stroke="#663B0F" stroke-width="3" />
-    <line x1="80" y1="170" x2="185" y2="170" stroke="#663B0F" stroke-width="3" />
-  </g>
-
-  <!-- Top Center: Madhya Pradesh Map Silhouette + Yellow Pin + Damoh -->
-  <g transform="translate(325, 60)" filter="url(#dropShadow)">
-    <!-- MP State Map Path (Stylized accurate shape) -->
-    <path d="M 185 10 
-             C 210 25, 230 15, 250 35 
-             C 280 40, 310 30, 335 55 
-             C 365 75, 380 110, 395 130 
-             C 410 150, 400 180, 375 195 
-             C 360 210, 350 230, 330 240 
-             C 300 255, 270 245, 250 265 
-             C 230 280, 190 285, 170 270 
-             C 145 255, 125 260, 95 245 
-             C 65 230, 45 200, 20 190 
-             C 5 170, 10 140, 30 120 
-             C 45 105, 55 80, 75 65 
-             C 95 50, 125 60, 150 40 
-             Z" 
-          fill="#D60000" 
-          stroke="#FFFFFF" 
-          stroke-width="5" />
-    
-    <!-- Inner subtle contour on MP map -->
-    <path d="M 185 25 C 240 40, 310 50, 360 110 C 375 145, 350 190, 320 225 C 240 250, 150 240, 60 170 C 50 120, 100 70, 185 25 Z" 
-          fill="#E60000" opacity="0.6" />
-
-    <!-- Yellow Location Pin -->
-    <g transform="translate(195, 80)" filter="url(#badgeShadow)">
-      <!-- Teardrop pin -->
-      <path d="M 28 0 C 12.5 0, 0 12.5, 0 28 C 0 49, 28 82, 28 82 C 28 82, 56 49, 56 28 C 56 12.5, 43.5 0, 28 0 Z" fill="url(#goldPin)" stroke="#B37D00" stroke-width="2" />
-      <!-- Pin Center Dot -->
-      <circle cx="28" cy="28" r="11" fill="#1F1F1F" />
+    <!-- ======================================================== -->
+    <!-- 2. GLOBE WITH WORLD CONTINENTS & LAT/LONG COORDINATES    -->
+    <!-- ======================================================== -->
+    <g transform="translate(512, 180)">
+      <!-- Globe Shaded Sphere -->
+      <circle cx="0" cy="0" r="144" fill="url(#globeSphere)" />
       
-      <!-- DAMOH text pill connected to pin -->
-      <rect x="52" y="10" width="125" height="36" rx="18" fill="#0A0A0A" stroke="#FFDE00" stroke-width="2" />
-      <text x="114" y="35" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="20" fill="#FFFFFF" text-anchor="middle" letter-spacing="1">DAMOH</text>
+      <!-- Coordinate Grid Lines -->
+      <ellipse cx="0" cy="0" rx="144" ry="42" fill="none" stroke="#64748B" stroke-width="1.8" opacity="0.6" />
+      <ellipse cx="0" cy="-55" rx="133" ry="28" fill="none" stroke="#64748B" stroke-width="1.5" opacity="0.5" />
+      <ellipse cx="0" cy="55" rx="133" ry="28" fill="none" stroke="#64748B" stroke-width="1.5" opacity="0.5" />
+      
+      <ellipse cx="0" cy="0" rx="46" ry="144" fill="none" stroke="#64748B" stroke-width="1.8" opacity="0.6" />
+      <ellipse cx="0" cy="0" rx="96" ry="144" fill="none" stroke="#64748B" stroke-width="1.8" opacity="0.5" />
+      <line x1="-144" y1="0" x2="144" y2="0" stroke="#64748B" stroke-width="2" opacity="0.7" />
+      <line x1="0" y1="-144" x2="0" y2="144" stroke="#64748B" stroke-width="2" opacity="0.7" />
+
+      <!-- World Continents (White / Silver Embossed) -->
+      <!-- Eurasia & India -->
+      <path d="M 10 -70 C 25 -80, 50 -75, 75 -55 C 98 -35, 88 -8, 65 8 C 48 18, 22 22, 12 38 C 6 46, -8 28, -4 14 C 0 -12, -22 -26, -12 -48 C -2 -62, -6 -65, 10 -70 Z" fill="#FFFFFF" opacity="0.8" />
+      <!-- Africa / Middle East -->
+      <path d="M -28 -18 C -12 -22, 2 -12, -4 12 C -8 32, -4 62, -18 82 C -32 92, -42 72, -38 42 C -42 16, -38 -8, -28 -18 Z" fill="#FFFFFF" opacity="0.8" />
+      <!-- North & South America -->
+      <path d="M -115 -62 C -92 -56, -82 -32, -96 -12 C -112 4, -86 32, -92 62 C -102 82, -116 66, -112 42 C -106 22, -126 -4, -120 -42 Z" fill="#FFFFFF" opacity="0.75" />
+      <!-- Australia & Pacific -->
+      <path d="M 86 46 C 106 42, 116 62, 102 76 C 82 82, 76 62, 86 46 Z" fill="#FFFFFF" opacity="0.8" />
+      
+      <!-- Outer Globe Specular Rim -->
+      <circle cx="0" cy="0" r="144" fill="none" stroke="#FFFFFF" stroke-width="3.5" opacity="0.85" />
     </g>
 
-    <!-- "MADHYA PRADESH" on the map -->
-    <text x="210" y="210" font-family="'Arial Black', sans-serif" font-weight="900" font-size="18" fill="#FFFFFF" text-anchor="middle" letter-spacing="2" filter="url(#badgeShadow)">MADHYA PRADESH</text>
-  </g>
-
-  <!-- Top Right: 3D Television News Microphone -->
-  <g transform="translate(710, 80)" filter="url(#dropShadow)">
-    <!-- Mic Body Handle -->
-    <path d="M 120 230 L 220 370 L 190 390 L 90 250 Z" fill="url(#micMetal)" stroke="#111" stroke-width="2" />
-    <path d="M 118 235 L 210 365" stroke="#666" stroke-width="4" opacity="0.6" />
-    
-    <!-- Red Cube Mic Flag with "NEWS" -->
-    <g transform="translate(50, 110) rotate(-18)">
-      <!-- 3D Box Faces -->
-      <!-- Front Face -->
-      <polygon points="20,40 180,30 170,140 10,150" fill="url(#newsRedBadge)" stroke="#FFFFFF" stroke-width="4" />
-      <!-- Top Face -->
-      <polygon points="20,40 80,0 240,-10 180,30" fill="#FF5252" stroke="#FFFFFF" stroke-width="3" />
-      <!-- Right Side Face -->
-      <polygon points="180,30 240,-10 230,100 170,140" fill="#800000" stroke="#FFFFFF" stroke-width="3" />
-      <!-- "NEWS" text on mic cube -->
-      <text x="95" y="112" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="52" fill="#FFFFFF" text-anchor="middle" letter-spacing="2" transform="rotate(-3, 95, 112)">NEWS</text>
+    <!-- ======================================================== -->
+    <!-- 3. SATELLITE DISH (TOP RIGHT AT ~2 O'CLOCK)              -->
+    <!-- ======================================================== -->
+    <g transform="translate(605, 68) rotate(16)">
+      <!-- Mount Strut -->
+      <line x1="0" y1="26" x2="0" y2="46" stroke="#CBD5E1" stroke-width="4.5" />
+      <circle cx="0" cy="46" r="4.5" fill="#475569" />
+      <!-- Parabolic Dish -->
+      <path d="M -28 14 C -22 -16, 22 -16, 28 14 C 16 18, -16 18, -28 14 Z" fill="url(#chromeBevelTop)" stroke="#0F172A" stroke-width="1.5" />
+      <!-- Feed Horn & Red Indicator Tip -->
+      <line x1="0" y1="4" x2="0" y2="-14" stroke="#FFFFFF" stroke-width="3" />
+      <circle cx="0" cy="-14" r="4" fill="#EF4444" stroke="#FFFFFF" stroke-width="1" />
+      <line x1="-18" y1="10" x2="0" y2="-14" stroke="#94A3B8" stroke-width="1.2" />
+      <line x1="18" y1="10" x2="0" y2="-14" stroke="#94A3B8" stroke-width="1.2" />
     </g>
 
-    <!-- Microphone Grill Head (Metallic Dome) -->
-    <g transform="translate(115, 60) rotate(-22)">
-      <!-- Base cylinder -->
-      <rect x="-35" y="20" width="70" height="30" rx="6" fill="#111" stroke="#888" stroke-width="2" />
-      <!-- Mesh Sphere / Dome -->
-      <ellipse cx="0" cy="0" rx="42" ry="52" fill="url(#micMetal)" stroke="#CCCCCC" stroke-width="3" />
-      <!-- Silver center band ring -->
-      <rect x="-42" y="-5" width="84" height="10" rx="3" fill="#E5E7EB" stroke="#666" stroke-width="1.5" />
-      <!-- Mesh Texture grid -->
-      <line x1="-30" y1="-25" x2="30" y2="25" stroke="#666" stroke-width="1.5" opacity="0.5" />
-      <line x1="30" y1="-25" x2="-30" y2="25" stroke="#666" stroke-width="1.5" opacity="0.5" />
-      <line x1="-38" y1="0" x2="38" y2="0" stroke="#666" stroke-width="1.5" opacity="0.5" />
-    </g>
-  </g>
-
-  <!-- ========================================== -->
-  <!-- MIDDLE SECTION: Big "DAMOH" + "DAILY NEWS" -->
-  <!-- ========================================== -->
-
-  <!-- Red Glossy Background Plate behind "DAMOH" -->
-  <g transform="translate(50, 400)" filter="url(#dropShadow)">
-    <!-- Main Red Plaque -->
-    <path d="M 40 0 L 884 0 C 905 0, 924 18, 924 40 L 924 165 C 924 185, 905 200, 884 200 L 40 200 C 18 200, 0 185, 0 165 L 0 40 C 0 18, 18 0, 40 0 Z" fill="url(#redBannerGrad)" />
-    <!-- Metallic upper & lower borders -->
-    <path d="M 0 35 L 924 35" stroke="#FF9999" stroke-width="4" opacity="0.7" />
-    <path d="M 0 170 L 924 170" stroke="#660000" stroke-width="5" />
-  </g>
-
-  <!-- 3D "DAMOH" Big Headline Typography -->
-  <g transform="translate(512, 555)" filter="url(#text3d)">
-    <!-- 3D extruded back layer -->
-    <text x="0" y="8" font-family="'Arial Black', Impact, 'Trebuchet MS', sans-serif" font-weight="900" font-size="195" fill="#660000" text-anchor="middle" letter-spacing="10">DAMOH</text>
-    <!-- 3D extruded middle layer -->
-    <text x="0" y="4" font-family="'Arial Black', Impact, 'Trebuchet MS', sans-serif" font-weight="900" font-size="195" fill="#A80000" text-anchor="middle" letter-spacing="10">DAMOH</text>
-    <!-- Crisp Top 3D White Layer -->
-    <text x="0" y="0" font-family="'Arial Black', Impact, 'Trebuchet MS', sans-serif" font-weight="900" font-size="195" fill="#FFFFFF" stroke="#F0F0F0" stroke-width="4" text-anchor="middle" letter-spacing="10">DAMOH</text>
-  </g>
-
-  <!-- "DAILY NEWS" Plate -->
-  <g transform="translate(68, 580)" filter="url(#dropShadow)">
-    <!-- Base Silver/White Plaque -->
-    <path d="M 30 0 L 828 0 C 845 0, 858 12, 858 30 L 840 120 C 840 135, 825 145, 810 145 L 30 145 C 12 145, 0 132, 0 115 L 0 30 C 0 12, 12 0, 30 0 Z" fill="url(#silverPlate)" stroke="#D1D5DB" stroke-width="4" />
-    
-    <!-- "DAILY" in Bold Black -->
-    <text x="240" y="102" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="108" fill="#111827" text-anchor="middle" letter-spacing="4">DAILY</text>
-
-    <!-- Red Slanted Trapezoid "NEWS" Badge -->
-    <g transform="translate(460, 5)" filter="url(#badgeShadow)">
-      <polygon points="35,0 410,0 380,135 0,135" fill="url(#newsRedBadge)" stroke="#FFFFFF" stroke-width="5" />
-      <!-- Red badge gloss line -->
-      <polygon points="45,10 395,10 385,55 20,55" fill="#FFFFFF" opacity="0.25" />
-      <!-- "NEWS" bold white text -->
-      <text x="200" y="98" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="108" fill="#FFFFFF" text-anchor="middle" letter-spacing="4">NEWS</text>
-    </g>
-  </g>
-
-  <!-- ========================================== -->
-  <!-- "NETWORK" with Red Flanking Lines -->
-  <!-- ========================================== -->
-  <g transform="translate(512, 755)">
-    <!-- Left Red Line (Triple Bar) -->
-    <line x1="-390" y1="-12" x2="-180" y2="-12" stroke="#D60000" stroke-width="8" stroke-linecap="round" />
-    <line x1="-370" y1="2" x2="-190" y2="2" stroke="#D60000" stroke-width="6" stroke-linecap="round" />
-
-    <!-- Center "NETWORK" Text -->
-    <text x="0" y="4" font-family="'Arial Black', sans-serif" font-weight="900" font-size="44" fill="#111827" text-anchor="middle" letter-spacing="14">NETWORK</text>
-
-    <!-- Right Red Line (Triple Bar) -->
-    <line x1="180" y1="-12" x2="390" y2="-12" stroke="#D60000" stroke-width="8" stroke-linecap="round" />
-    <line x1="190" y1="2" x2="370" y2="2" stroke="#D60000" stroke-width="6" stroke-linecap="round" />
-  </g>
-
-  <!-- ========================================== -->
-  <!-- HINDI TAGLINE: "आपका शहर • आपकी खबर" -->
-  <!-- ========================================== -->
-  <g transform="translate(512, 825)">
-    <text x="0" y="0" font-family="'Noto Sans Devanagari', 'Segoe UI', Arial, sans-serif" font-weight="800" font-size="48" fill="#111827" text-anchor="middle" letter-spacing="1">
-      आपका शहर <tspan fill="#D60000" font-size="52">•</tspan> आपकी खबर
-    </text>
-  </g>
-
-  <!-- ========================================== -->
-  <!-- BOTTOM PILL BANNER: "DAMOH | MADHYA PRADESH (MP)" -->
-  <!-- ========================================== -->
-  <g transform="translate(100, 860)" filter="url(#dropShadow)">
-    <!-- Red Capsule Pill -->
-    <rect x="0" y="0" width="824" height="85" rx="42" fill="url(#bottomCapsuleGrad)" stroke="#FFA3A3" stroke-width="3" />
-    
-    <!-- White Map Pin Icon -->
-    <g transform="translate(45, 18)">
-      <path d="M 18 0 C 8 0, 0 8, 0 18 C 0 32, 18 48, 18 48 C 18 48, 36 32, 36 18 C 36 8, 28 0, 18 0 Z" fill="#FFFFFF" />
-      <circle cx="18" cy="18" r="7" fill="#800000" />
+    <!-- ======================================================== -->
+    <!-- 4. 3D EMBOSSED RED 'D' MONOGRAM (CENTER GLOBE)           -->
+    <!-- ======================================================== -->
+    <g transform="translate(512, 174)" filter="url(#textPopShadow)">
+      <!-- 'D' Shadow / Bevel Base -->
+      <path d="M -92 -66 L -10 -66 C 46 -66, 82 -36, 82 0 C 82 36, 46 66, -10 66 L -92 66 Z" fill="#240204" />
+      <!-- 'D' Crimson Face Plate -->
+      <path d="M -88 -62 L -12 -62 C 42 -62, 76 -32, 76 0 C 76 32, 42 62, -12 62 L -88 62 Z" fill="url(#crimsonWoodGrad)" stroke="#FFA3A3" stroke-width="2.5" />
+      <!-- 'D' Inner Cutout -->
+      <path d="M -62 -36 L -16 -36 C 18 -36, 44 -18, 44 0 C 44 18, 18 36, -16 36 L -62 36 Z" fill="#1C0204" stroke="#FFA3A3" stroke-width="2" />
+      <!-- Top Chrome Highlight -->
+      <path d="M -88 -62 L 0 -62 C 44 -62, 76 -30, 76 0" fill="none" stroke="#FFFFFF" stroke-width="3.5" opacity="0.9" />
     </g>
 
-    <!-- Location Text -->
-    <text x="95" y="54" font-family="'Arial Black', sans-serif" font-weight="900" font-size="34" fill="#FFFFFF" letter-spacing="1">
-      DAMOH <tspan fill="#E5E7EB" font-weight="400">|</tspan> MADHYA PRADESH <tspan fill="#FFDE00">(MP)</tspan>
-    </text>
-
-    <!-- MP Map Badge on Far Right -->
-    <g transform="translate(685, 6)">
-      <!-- White MP Map silhouette background -->
-      <path d="M 45 4 C 55 10, 65 6, 75 16 C 85 20, 95 16, 100 26 C 105 36, 95 50, 85 58 C 75 64, 60 70, 45 66 C 30 62, 15 58, 6 48 C 0 38, 4 28, 14 20 C 22 14, 32 18, 45 4 Z" fill="#FFFFFF" stroke="#FFD1D1" stroke-width="2" filter="url(#badgeShadow)" />
-      <!-- Red "MP" text inside map -->
-      <text x="54" y="46" font-family="'Arial Black', Impact, sans-serif" font-weight="900" font-size="28" fill="#C80000" text-anchor="middle" letter-spacing="1">MP</text>
+    <!-- ======================================================== -->
+    <!-- 5. CRIMSON QUILL FEATHER PEN                             -->
+    <!-- ======================================================== -->
+    <g transform="translate(585, 94) rotate(-32)" filter="url(#textPopShadow)">
+      <!-- Feather Body -->
+      <path d="M 0 -72 C 20 -46, 28 12, 0 102 C -28 12, -20 -46, 0 -72 Z" fill="url(#quillGrad)" stroke="#3D0206" stroke-width="2" />
+      <!-- Feather Details -->
+      <path d="M 0 -62 C 14 -36, 20 10, 0 82 C -20 10, -14 -36, 0 -62 Z" fill="none" stroke="#FFA3A3" stroke-width="1.5" opacity="0.6" />
+      <!-- Shaft / Quill Rachis -->
+      <line x1="0" y1="-76" x2="0" y2="122" stroke="#FFFFFF" stroke-width="3" />
+      <!-- Chrome Pen Nib -->
+      <path d="M -6 112 L 6 112 L 0 134 Z" fill="url(#chromeBevelTop)" stroke="#1E293B" stroke-width="1" />
+      <line x1="0" y1="112" x2="0" y2="130" stroke="#0F172A" stroke-width="1" />
     </g>
+
+    <!-- ======================================================== -->
+    <!-- 6. HORIZONTAL SHIELD / PLAQUE STRUCTURE                  -->
+    <!-- ======================================================== -->
+    <!-- Outer Heavy Chrome Beveled Shield -->
+    <path d="M 68 185 
+             L 320 185 
+             C 335 155, 365 140, 400 140 
+             L 624 140 
+             C 659 140, 689 155, 704 185 
+             L 956 185 
+             C 972 185, 984 198, 984 214 
+             L 984 390 
+             C 984 406, 972 418, 956 418 
+             L 590 418 
+             L 512 458 
+             L 434 418 
+             L 68 418 
+             C 52 418, 40 406, 40 390 
+             L 40 214 
+             C 40 198, 52 185, 68 185 Z" 
+          fill="url(#chromeBevelTop)" 
+          stroke="#0F172A" 
+          stroke-width="3.5" />
+
+    <!-- Dark Inner Recess Groove -->
+    <path d="M 74 192 
+             L 322 192 
+             C 338 162, 368 147, 402 147 
+             L 622 147 
+             C 656 147, 686 162, 702 192 
+             L 950 192 
+             C 962 192, 972 202, 972 214 
+             L 972 384 
+             C 972 396, 962 406, 950 406 
+             L 585 406 
+             L 512 444 
+             L 439 406 
+             L 74 406 
+             C 62 406, 52 396, 52 384 
+             L 52 214 
+             C 52 202, 62 192, 74 192 Z" 
+          fill="#1A0204" />
+
+    <!-- Crimson Woodgrain Front Plaque -->
+    <path d="M 80 198 
+             L 324 198 
+             C 340 170, 370 154, 404 154 
+             L 620 154 
+             C 654 154, 684 170, 700 198 
+             L 944 198 
+             C 954 198, 962 206, 962 216 
+             L 962 378 
+             C 962 388, 954 396, 944 396 
+             L 580 396 
+             L 512 432 
+             L 444 396 
+             L 80 396 
+             C 70 396, 62 388, 62 378 
+             L 62 216 
+             C 62 206, 70 198, 80 198 Z" 
+          fill="url(#crimsonWoodGrad)" />
+
+    <!-- Woodgrain Grain Lines -->
+    <g opacity="0.16" stroke="#000000" stroke-width="1.5">
+      <line x1="70" y1="215" x2="950" y2="215" />
+      <line x1="70" y1="235" x2="950" y2="235" />
+      <line x1="70" y1="255" x2="950" y2="255" />
+      <line x1="70" y1="275" x2="950" y2="275" />
+      <line x1="70" y1="295" x2="950" y2="295" />
+      <line x1="70" y1="315" x2="950" y2="315" />
+      <line x1="70" y1="335" x2="950" y2="335" />
+      <line x1="70" y1="355" x2="950" y2="355" />
+      <line x1="70" y1="375" x2="950" y2="375" />
+    </g>
+
+    <!-- Top Metallic Edge Reflection Highlight -->
+    <line x1="82" y1="200" x2="942" y2="200" stroke="#FFA3A3" stroke-width="2" opacity="0.6" />
+
+    <!-- Horizontal Chrome Divider Bar -->
+    <g filter="url(#textPopShadow)">
+      <polygon points="90,328 934,328 920,344 104,344" fill="url(#chromeBevelTop)" stroke="#475569" stroke-width="1.5" />
+      <polygon points="95,330 929,330 923,334 101,334" fill="#FFFFFF" opacity="0.9" />
+    </g>
+
+    <!-- 7. 3D CHISELED TYPOGRAPHY: DAMOH (3D RED) + DAILY (3D SILVER) -->
+    <g transform="translate(512, 298)">
+      
+      <!-- DAMOH (3D RED) -->
+      <!-- Red 3D Extrusion Shadows -->
+      <text x="-15" y="7" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#240204" text-anchor="end" letter-spacing="3">DAMOH</text>
+      <text x="-15" y="4" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#4D0308" text-anchor="end" letter-spacing="3">DAMOH</text>
+      <text x="-15" y="2" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#7A0811" text-anchor="end" letter-spacing="3">DAMOH</text>
+      
+      <!-- Red 3D Front Face -->
+      <text x="-15" y="0" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="url(#redTextGrad)" stroke="#FFA3A3" stroke-width="1.8" text-anchor="end" letter-spacing="3">DAMOH</text>
+      <!-- Red Top White Reflection -->
+      <text x="-15" y="-1" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="none" stroke="#FFFFFF" stroke-width="1" opacity="0.8" text-anchor="end" letter-spacing="3">DAMOH</text>
+
+
+      <!-- DAILY (3D SILVER / WHITE) -->
+      <!-- Silver 3D Extrusion Shadows -->
+      <text x="15" y="7" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#1C0204" text-anchor="start" letter-spacing="3">DAILY</text>
+      <text x="15" y="4" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#475569" text-anchor="start" letter-spacing="3">DAILY</text>
+      <text x="15" y="2" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="#64748B" text-anchor="start" letter-spacing="3">DAILY</text>
+      
+      <!-- Silver 3D Front Face -->
+      <text x="15" y="0" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="url(#silverTextGrad)" stroke="#FFFFFF" stroke-width="2" text-anchor="start" letter-spacing="3">DAILY</text>
+      <!-- Silver Top White Reflection -->
+      <text x="15" y="-1" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="112" fill="none" stroke="#FFFFFF" stroke-width="1.2" opacity="0.9" text-anchor="start" letter-spacing="3">DAILY</text>
+
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 8. "NEWS NETWORK" SILVER BLOCK TEXT (LOWER RIBBON)       -->
+    <!-- ======================================================== -->
+    <g transform="translate(512, 400)" filter="url(#textPopShadow)">
+      <!-- 3D Shadow -->
+      <text x="0" y="4" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="54" fill="#1A0204" text-anchor="middle" letter-spacing="12">NEWS NETWORK</text>
+      <!-- Silver Front Face -->
+      <text x="0" y="0" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900" font-size="54" fill="url(#silverTextGrad)" stroke="#FFFFFF" stroke-width="1.2" text-anchor="middle" letter-spacing="12">NEWS NETWORK</text>
+    </g>
+
   </g>
 </svg>
 `;
 
-// Maskable Icon SVG (Contains safe area padding ~15% on all sides so Android round/squircle mask does not clip)
-const maskableSvg = `
+/**
+ * 1024x1024 High-Resolution Master Square App Icon & Favicon SVG
+ * Centers the official Damoh Daily News core emblem:
+ * - 3D Crimson & Chrome Arch/Shield Frame
+ * - High-Contrast 3D Spherical Silver Globe with Latitude/Longitude & Continents
+ * - Iconic 3D Crimson Red 'D' Monogram in Center
+ * - Crimson Quill Feather with Silver Spine & Nib
+ * - Satellite Dish with Red Indicator Light
+ * Optimized for ultra-sharp clarity from 1024x1024 down to 16x16.
+ */
+export const officialMasterIconSvg = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Solid background for maskable canvas filling edge to edge -->
-  <rect width="1024" height="1024" fill="#990000" />
-  
-  <!-- Scaled down logo centered in safe zone (80% scale) -->
-  <g transform="translate(102.4, 102.4) scale(0.8)">
-    ${baseSvg.replace(/<\?xml.*?\?>/, '').replace(/<svg[^>]*>/, '').replace(/<\/svg>/, '')}
+  <defs>
+    <!-- Multi-stop Chrome Bevel Gradients -->
+    <linearGradient id="iconChromeOuter" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="18%" stop-color="#E2E8F0" />
+      <stop offset="38%" stop-color="#94A3B8" />
+      <stop offset="50%" stop-color="#475569" />
+      <stop offset="68%" stop-color="#CBD5E1" />
+      <stop offset="88%" stop-color="#F8FAFC" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <linearGradient id="iconChromeLinear" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="20%" stop-color="#CBD5E1" />
+      <stop offset="50%" stop-color="#64748B" />
+      <stop offset="80%" stop-color="#CBD5E1" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <!-- Rich Crimson Woodgrain Gradient -->
+    <linearGradient id="iconCrimsonGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#800A10" />
+      <stop offset="25%" stop-color="#A5101A" />
+      <stop offset="50%" stop-color="#6E080E" />
+      <stop offset="75%" stop-color="#50050A" />
+      <stop offset="100%" stop-color="#240204" />
+    </linearGradient>
+
+    <!-- High-Contrast 3D Globe Shading -->
+    <radialGradient id="iconGlobeSphere" cx="40%" cy="36%" r="62%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="25%" stop-color="#F1F5F9" />
+      <stop offset="55%" stop-color="#CBD5E1" />
+      <stop offset="80%" stop-color="#64748B" />
+      <stop offset="96%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </radialGradient>
+
+    <!-- 3D Red 'D' Monogram Gradient -->
+    <linearGradient id="iconRedDGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF4D5E" />
+      <stop offset="25%" stop-color="#E6192A" />
+      <stop offset="55%" stop-color="#B30F1D" />
+      <stop offset="85%" stop-color="#7A0811" />
+      <stop offset="100%" stop-color="#3D0206" />
+    </linearGradient>
+
+    <!-- Quill Feather Gradient -->
+    <linearGradient id="iconQuillGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3849" />
+      <stop offset="35%" stop-color="#D61324" />
+      <stop offset="75%" stop-color="#7A0812" />
+      <stop offset="100%" stop-color="#3D0206" />
+    </linearGradient>
+
+    <!-- Depth & Shadow Filters -->
+    <filter id="masterIconShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000000" flood-opacity="0.85" />
+    </filter>
+
+    <filter id="dShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#000000" flood-opacity="0.9" />
+    </filter>
+  </defs>
+
+  <g filter="url(#masterIconShadow)">
+    <!-- ======================================================== -->
+    <!-- 1. SQUIRCLE SHIELD BASE WITH MULTI-TIER CHROME BEVEL    -->
+    <!-- ======================================================== -->
+    <!-- Outer Heavy Chrome Shield -->
+    <rect x="36" y="36" width="952" height="952" rx="220" fill="url(#iconChromeOuter)" stroke="#0F172A" stroke-width="6" />
+    
+    <!-- Dark Inner Recess Groove -->
+    <rect x="58" y="58" width="908" height="908" rx="200" fill="#1C0204" />
+    
+    <!-- Crimson Woodgrain Base Plate -->
+    <rect x="74" y="74" width="876" height="876" rx="186" fill="url(#iconCrimsonGrad)" stroke="#FFA3A3" stroke-width="3" stroke-opacity="0.5" />
+
+    <!-- Subtle Woodgrain Lines -->
+    <g opacity="0.14" stroke="#000000" stroke-width="3">
+      <line x1="80" y1="180" x2="944" y2="180" />
+      <line x1="80" y1="260" x2="944" y2="260" />
+      <line x1="80" y1="340" x2="944" y2="340" />
+      <line x1="80" y1="420" x2="944" y2="420" />
+      <line x1="80" y1="500" x2="944" y2="500" />
+      <line x1="80" y1="580" x2="944" y2="580" />
+      <line x1="80" y1="660" x2="944" y2="660" />
+      <line x1="80" y1="740" x2="944" y2="740" />
+      <line x1="80" y1="820" x2="944" y2="820" />
+    </g>
+
+    <!-- Inner Chrome Arch Bevel Rim -->
+    <circle cx="512" cy="512" r="380" fill="none" stroke="url(#iconChromeOuter)" stroke-width="26" />
+    <circle cx="512" cy="512" r="355" fill="none" stroke="#1A0204" stroke-width="6" />
+
+    <!-- ======================================================== -->
+    <!-- 2. SPHERICAL SILVER GLOBE WITH CONTINENTS & COORDINATES  -->
+    <!-- ======================================================== -->
+    <g transform="translate(512, 512)">
+      <!-- Globe Sphere Base -->
+      <circle cx="0" cy="0" r="348" fill="url(#iconGlobeSphere)" />
+      
+      <!-- Coordinate Grid Lines -->
+      <ellipse cx="0" cy="0" rx="348" ry="102" fill="none" stroke="#475569" stroke-width="4.5" opacity="0.65" />
+      <ellipse cx="0" cy="-135" rx="320" ry="68" fill="none" stroke="#475569" stroke-width="3.5" opacity="0.55" />
+      <ellipse cx="0" cy="135" rx="320" ry="68" fill="none" stroke="#475569" stroke-width="3.5" opacity="0.55" />
+      
+      <ellipse cx="0" cy="0" rx="112" ry="348" fill="none" stroke="#475569" stroke-width="4.5" opacity="0.65" />
+      <ellipse cx="0" cy="0" rx="230" ry="348" fill="none" stroke="#475569" stroke-width="4" opacity="0.55" />
+      <line x1="-348" y1="0" x2="348" y2="0" stroke="#475569" stroke-width="5" opacity="0.75" />
+      <line x1="0" y1="-348" x2="0" y2="348" stroke="#475569" stroke-width="5" opacity="0.75" />
+
+      <!-- World Continents (Embossed Silver-White) -->
+      <!-- Eurasia & Asia -->
+      <path d="M 24 -170 C 60 -195, 120 -180, 180 -130 C 235 -85, 210 -20, 155 20 C 115 45, 55 55, 30 95 C 15 115, -20 70, -10 35 C 0 -30, -55 -65, -30 -120 C -5 -150, -15 -160, 24 -170 Z" fill="#FFFFFF" opacity="0.85" />
+      <!-- Africa / Middle East -->
+      <path d="M -70 -45 C -30 -55, 5 -30, -10 30 C -20 80, -10 150, -45 200 C -80 225, -105 175, -95 100 C -105 40, -95 -20, -70 -45 Z" fill="#FFFFFF" opacity="0.85" />
+      <!-- Americas -->
+      <path d="M -280 -150 C -225 -135, -200 -75, -235 -25 C -270 15, -210 80, -225 150 C -250 200, -285 160, -275 100 C -260 50, -305 -10, -290 -105 Z" fill="#FFFFFF" opacity="0.8" />
+      <!-- Australia & Pacific -->
+      <path d="M 210 110 C 260 100, 280 150, 250 185 C 200 200, 185 150, 210 110 Z" fill="#FFFFFF" opacity="0.85" />
+      
+      <!-- Outer Specular Atmosphere Rim -->
+      <circle cx="0" cy="0" r="348" fill="none" stroke="#FFFFFF" stroke-width="8" opacity="0.9" />
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 3. SATELLITE DISH (TOP RIGHT AT 2 O'CLOCK)               -->
+    <!-- ======================================================== -->
+    <g transform="translate(735, 250) rotate(16)">
+      <!-- Strut Mount -->
+      <line x1="0" y1="60" x2="0" y2="110" stroke="#CBD5E1" stroke-width="11" />
+      <circle cx="0" cy="110" r="11" fill="#334155" />
+      <!-- Parabolic Dish -->
+      <path d="M -68 35 C -52 -40, 52 -40, 68 35 C 40 45, -40 45, -68 35 Z" fill="url(#iconChromeOuter)" stroke="#0F172A" stroke-width="4" />
+      <!-- Feed Horn & Red Signal Indicator -->
+      <line x1="0" y1="10" x2="0" y2="-32" stroke="#FFFFFF" stroke-width="7" />
+      <circle cx="0" cy="-32" r="10" fill="#EF4444" stroke="#FFFFFF" stroke-width="2.5" />
+      <line x1="-42" y1="24" x2="0" y2="-32" stroke="#94A3B8" stroke-width="3" />
+      <line x1="42" y1="24" x2="0" y2="-32" stroke="#94A3B8" stroke-width="3" />
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 4. CRIMSON QUILL FEATHER PEN                             -->
+    <!-- ======================================================== -->
+    <g transform="translate(685, 310) rotate(-32)" filter="url(#dShadow)">
+      <!-- Feather Body -->
+      <path d="M 0 -170 C 48 -110, 68 30, 0 245 C -68 30, -48 -110, 0 -170 Z" fill="url(#iconQuillGrad)" stroke="#3D0206" stroke-width="5" />
+      <!-- Feather Barb Textures -->
+      <path d="M 0 -145 C 34 -85, 48 24, 0 195 C -48 24, -34 -85, 0 -145 Z" fill="none" stroke="#FFA3A3" stroke-width="3.5" opacity="0.65" />
+      <!-- Central Silver Spine Shaft -->
+      <line x1="0" y1="-180" x2="0" y2="290" stroke="#FFFFFF" stroke-width="7" />
+      <!-- Chrome Metallic Pen Nib -->
+      <path d="M -14 265 L 14 265 L 0 320 Z" fill="url(#iconChromeOuter)" stroke="#1E293B" stroke-width="2.5" />
+      <line x1="0" y1="265" x2="0" y2="310" stroke="#0F172A" stroke-width="2" />
+    </g>
+
+    <!-- ======================================================== -->
+    <!-- 5. 3D CRIMSON RED 'D' MONOGRAM (HERO CENTER)             -->
+    <!-- ======================================================== -->
+    <g transform="translate(512, 512)" filter="url(#dShadow)">
+      <!-- Deep 3D Red Extrusion Layers for Tangible Chiseled Depth -->
+      <path d="M -220 -160 L -25 -160 C 110 -160, 200 -85, 200 0 C 200 85, 110 160, -25 160 L -220 160 Z" fill="#140102" />
+      <path d="M -216 -154 L -28 -154 C 104 -154, 192 -80, 192 0 C 192 80, 104 154, -28 154 L -216 154 Z" fill="#2E0306" />
+      <path d="M -212 -148 L -30 -148 C 98 -148, 184 -75, 184 0 C 184 75, 98 148, -30 148 L -212 148 Z" fill="#4D0409" />
+      <path d="M -208 -142 L -32 -142 C 92 -142, 176 -70, 176 0 C 176 70, 92 142, -32 142 L -208 142 Z" fill="#7A0811" />
+
+      <!-- Front Crimson Red Face Plate -->
+      <path d="M -204 -138 L -35 -138 C 88 -138, 170 -66, 170 0 C 170 66, 88 138, -35 138 L -204 138 Z" fill="url(#iconRedDGrad)" stroke="#FFA3A3" stroke-width="6" />
+      
+      <!-- Inner 'D' Cutout with 3D Depth -->
+      <path d="M -145 -80 L -38 -80 C 42 -80, 100 -40, 100 0 C 100 40, 42 80, -38 80 L -145 80 Z" fill="#140102" stroke="#FFA3A3" stroke-width="5" />
+      
+      <!-- Upper Chrome Specular Arc Reflection -->
+      <path d="M -204 -138 L 0 -138 C 100 -138, 170 -66, 170 0" fill="none" stroke="#FFFFFF" stroke-width="8" opacity="0.9" />
+    </g>
   </g>
 </svg>
 `;
 
-async function generateAssets() {
+export const officialIconSvg = officialMasterIconSvg;
+
+async function buildAllLogoAssets() {
   const publicDir = path.join(process.cwd(), 'public');
   if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir, { recursive: true });
   }
 
-  // 1. Write the high-resolution vector SVG
-  fs.writeFileSync(path.join(publicDir, 'icon.svg'), baseSvg.trim());
-  console.log('Created icon.svg');
+  console.log('Generating Official Logo & Brand Assets...');
 
-  // 2. Generate standard sizes using Sharp
-  const svgBuffer = Buffer.from(baseSvg);
-  const maskableBuffer = Buffer.from(maskableSvg);
+  // 1. Write Vector SVGs
+  fs.writeFileSync(path.join(publicDir, 'logo.svg'), officialLogoSvg.trim());
+  fs.writeFileSync(path.join(publicDir, 'icon.svg'), officialMasterIconSvg.trim());
+  fs.writeFileSync(path.join(publicDir, 'icon-v2.svg'), officialMasterIconSvg.trim());
+  console.log('Created public/logo.svg, public/icon.svg, and public/icon-v2.svg');
 
-  // 512x512 PNG
-  await sharp(svgBuffer)
-    .resize(512, 512)
+  const logoBuffer = Buffer.from(officialLogoSvg);
+  const masterIconBuffer = Buffer.from(officialMasterIconSvg);
+
+  // 2. Main Logo WebP (1024x512 with transparent background)
+  await sharp(logoBuffer)
+    .resize(1024, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .webp({ quality: 95, effort: 6 })
+    .toFile(path.join(publicDir, 'logo.webp'));
+  console.log('Created public/logo.webp');
+
+  // 3. Medium / Mobile Logo WebP (512x256)
+  await sharp(logoBuffer)
+    .resize(512, 256, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .webp({ quality: 92, effort: 6 })
+    .toFile(path.join(publicDir, 'logo-sm.webp'));
+  console.log('Created public/logo-sm.webp');
+
+  // 4. High-Res Logo PNG (1024x512)
+  await sharp(logoBuffer)
+    .resize(1024, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png({ quality: 100, compressionLevel: 9 })
-    .toFile(path.join(publicDir, 'icon-512.png'));
-  console.log('Created icon-512.png');
+    .toFile(path.join(publicDir, 'logo.png'));
+  console.log('Created public/logo.png');
 
-  // 192x192 PNG
-  await sharp(svgBuffer)
-    .resize(192, 192)
+  // 5. 1024x1024 Master App Icon PNG
+  const masterIcon1024Png = await sharp(masterIconBuffer)
+    .resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png({ quality: 100, compressionLevel: 9 })
-    .toFile(path.join(publicDir, 'icon-192.png'));
-  console.log('Created icon-192.png');
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'icon-1024.png'), masterIcon1024Png);
+  fs.writeFileSync(path.join(publicDir, 'icon-1024-v2.png'), masterIcon1024Png);
+  console.log('Created public/icon-1024.png and icon-1024-v2.png (1024x1024 Master)');
 
-  // 180x180 Apple Touch Icon
-  await sharp(svgBuffer)
-    .resize(180, 180)
+  // 6. 512x512 High-Resolution App Icon PNG
+  const icon512Png = await sharp(masterIconBuffer)
+    .resize(512, 512, { kernel: sharp.kernel.lanczos3 })
     .png({ quality: 100, compressionLevel: 9 })
-    .toFile(path.join(publicDir, 'apple-touch-icon.png'));
-  console.log('Created apple-touch-icon.png');
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'icon-512.png'), icon512Png);
+  fs.writeFileSync(path.join(publicDir, 'icon-512-v2.png'), icon512Png);
+  console.log('Created public/icon-512.png and icon-512-v2.png');
 
-  // 48x48 Favicon PNG
-  await sharp(svgBuffer)
-    .resize(48, 48)
-    .png({ quality: 100 })
-    .toFile(path.join(publicDir, 'favicon-48x48.png'));
-  console.log('Created favicon-48x48.png');
-
-  // 32x32 Favicon PNG
-  await sharp(svgBuffer)
-    .resize(32, 32)
-    .png({ quality: 100 })
-    .toFile(path.join(publicDir, 'favicon-32x32.png'));
-  console.log('Created favicon-32x32.png');
-
-  // 16x16 Favicon PNG
-  await sharp(svgBuffer)
-    .resize(16, 16)
-    .png({ quality: 100 })
-    .toFile(path.join(publicDir, 'favicon-16x16.png'));
-  console.log('Created favicon-16x16.png');
-
-  // Standard favicon.png
-  await sharp(svgBuffer)
-    .resize(48, 48)
-    .png({ quality: 100 })
-    .toFile(path.join(publicDir, 'favicon.png'));
-  console.log('Created favicon.png');
-
-  // 512x512 Maskable Icon
-  await sharp(maskableBuffer)
-    .resize(512, 512)
+  // 7. 192x192 Android / PWA Icon PNG
+  const icon192Png = await sharp(masterIconBuffer)
+    .resize(192, 192, { kernel: sharp.kernel.lanczos3 })
     .png({ quality: 100, compressionLevel: 9 })
-    .toFile(path.join(publicDir, 'icon-512-maskable.png'));
-  console.log('Created icon-512-maskable.png');
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'icon-192.png'), icon192Png);
+  fs.writeFileSync(path.join(publicDir, 'icon-192-v2.png'), icon192Png);
+  console.log('Created public/icon-192.png and icon-192-v2.png');
 
-  // 192x192 Maskable Icon
-  await sharp(maskableBuffer)
-    .resize(192, 192)
+  // 8. Maskable icons (with ~10% safe area margin)
+  const maskable512Buffer = await sharp(masterIconBuffer)
+    .resize(435, 435, { kernel: sharp.kernel.lanczos3 })
+    .extend({
+      top: 38,
+      bottom: 39,
+      left: 38,
+      right: 39,
+      background: { r: 28, g: 2, b: 4, alpha: 1 }
+    })
     .png({ quality: 100, compressionLevel: 9 })
-    .toFile(path.join(publicDir, 'icon-192-maskable.png'));
-  console.log('Created icon-192-maskable.png');
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'icon-512-maskable.png'), maskable512Buffer);
+  fs.writeFileSync(path.join(publicDir, 'icon-512-maskable-v2.png'), maskable512Buffer);
 
-  console.log('All PWA & Favicon assets generated successfully!');
+  const maskable192Buffer = await sharp(masterIconBuffer)
+    .resize(163, 163, { kernel: sharp.kernel.lanczos3 })
+    .extend({
+      top: 14,
+      bottom: 15,
+      left: 14,
+      right: 15,
+      background: { r: 28, g: 2, b: 4, alpha: 1 }
+    })
+    .png({ quality: 100, compressionLevel: 9 })
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'icon-192-maskable.png'), maskable192Buffer);
+  fs.writeFileSync(path.join(publicDir, 'icon-192-maskable-v2.png'), maskable192Buffer);
+
+  // 9. 180x180 Apple Touch Icon PNG
+  const appleTouchPng = await sharp(masterIconBuffer)
+    .resize(180, 180, { kernel: sharp.kernel.lanczos3 })
+    .png({ quality: 100, compressionLevel: 9 })
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'apple-touch-icon.png'), appleTouchPng);
+  fs.writeFileSync(path.join(publicDir, 'apple-touch-icon-v2.png'), appleTouchPng);
+  console.log('Created public/apple-touch-icon.png and apple-touch-icon-v2.png');
+
+  // 10. Precision Lossless Favicons (48x48, 32x32, 16x16)
+  const favicon48Png = await sharp(masterIconBuffer)
+    .resize(48, 48, { kernel: sharp.kernel.lanczos3 })
+    .png({ quality: 100, compressionLevel: 9 })
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'favicon-48x48.png'), favicon48Png);
+  fs.writeFileSync(path.join(publicDir, 'favicon-48x48-v2.png'), favicon48Png);
+  fs.writeFileSync(path.join(publicDir, 'favicon.png'), favicon48Png);
+  fs.writeFileSync(path.join(publicDir, 'favicon-v2.png'), favicon48Png);
+
+  const favicon32Png = await sharp(masterIconBuffer)
+    .resize(32, 32, { kernel: sharp.kernel.lanczos3 })
+    .png({ quality: 100, compressionLevel: 9 })
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'favicon-32x32.png'), favicon32Png);
+  fs.writeFileSync(path.join(publicDir, 'favicon-32x32-v2.png'), favicon32Png);
+
+  const favicon16Png = await sharp(masterIconBuffer)
+    .resize(16, 16, { kernel: sharp.kernel.lanczos3 })
+    .png({ quality: 100, compressionLevel: 9 })
+    .toBuffer();
+  fs.writeFileSync(path.join(publicDir, 'favicon-16x16.png'), favicon16Png);
+  fs.writeFileSync(path.join(publicDir, 'favicon-16x16-v2.png'), favicon16Png);
+
+  console.log('Created public lossless favicon PNGs (16x16, 32x32, 48x48 and -v2 variants)');
+
+  // 11. Multi-Resolution favicon.ico containing 16x16, 32x32, 48x48
+  try {
+    const icoBuffer = await toIco([favicon16Png, favicon32Png, favicon48Png]);
+    fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuffer);
+    fs.writeFileSync(path.join(publicDir, 'favicon-v2.ico'), icoBuffer);
+    console.log('Created high-quality multi-size public/favicon.ico and public/favicon-v2.ico with to-ico');
+  } catch (icoErr) {
+    console.error('Error generating favicon.ico with to-ico, falling back to convert:', icoErr);
+    try {
+      execSync('convert public/favicon-16x16.png public/favicon-32x32.png public/favicon-48x48.png public/favicon.ico', { stdio: 'inherit' });
+      fs.copyFileSync(path.join(publicDir, 'favicon.ico'), path.join(publicDir, 'favicon-v2.ico'));
+      console.log('Created public/favicon.ico and favicon-v2.ico via convert');
+    } catch (e) {
+      console.error('Failed to convert favicon.ico:', e);
+    }
+  }
+
+  // 12. Copy all generated assets to dist folder if dist exists
+  const distDir = path.join(process.cwd(), 'dist');
+  if (fs.existsSync(distDir)) {
+    const filesToCopy = [
+      'logo.webp',
+      'logo-sm.webp',
+      'logo.png',
+      'logo.svg',
+      'icon.svg',
+      'icon-v2.svg',
+      'icon-1024.png',
+      'icon-1024-v2.png',
+      'icon-512.png',
+      'icon-512-v2.png',
+      'icon-512-maskable.png',
+      'icon-512-maskable-v2.png',
+      'icon-192.png',
+      'icon-192-v2.png',
+      'icon-192-maskable.png',
+      'icon-192-maskable-v2.png',
+      'apple-touch-icon.png',
+      'apple-touch-icon-v2.png',
+      'favicon-48x48.png',
+      'favicon-48x48-v2.png',
+      'favicon-32x32.png',
+      'favicon-32x32-v2.png',
+      'favicon-16x16.png',
+      'favicon-16x16-v2.png',
+      'favicon.png',
+      'favicon-v2.png',
+      'favicon.ico',
+      'favicon-v2.ico'
+    ];
+    for (const f of filesToCopy) {
+      const srcF = path.join(publicDir, f);
+      const dstF = path.join(distDir, f);
+      if (fs.existsSync(srcF)) {
+        fs.copyFileSync(srcF, dstF);
+      }
+    }
+  }
+
+  console.log('Successfully generated all official branding & logo assets!');
+  process.exit(0);
 }
 
-generateAssets().catch(err => {
+buildAllLogoAssets().catch(err => {
   console.error('Error generating assets:', err);
   process.exit(1);
 });

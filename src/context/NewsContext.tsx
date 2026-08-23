@@ -34,22 +34,9 @@ import {
 } from '@/lib/firebase';
 import { isWithin48Hours } from '@/lib/utils';
 import { saveArticlesToCache, getStoredArticlesList, saveArticlesListToStorage } from '@/lib/articleCache';
+import { sanitizeSlug, generateUniqueSlug, createSlug, stripGeneratedSuffixes, cleanArticleSlugIfNeeded } from '@/lib/slug';
 
-export function createSlug(title: string, uniqueId?: string): string {
-  let clean = title.trim()
-    .replace(/[^\w\u0900-\u097F\s-]/g, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/-+/g, '-')
-    .toLowerCase();
-  
-  if (!clean || clean === '-') {
-    clean = 'news-article';
-  }
-  if (uniqueId) {
-    return `${clean}-${uniqueId}`;
-  }
-  return clean;
-}
+export { createSlug, sanitizeSlug, generateUniqueSlug, stripGeneratedSuffixes };
 
 interface NewsContextType {
   // Articles
@@ -142,6 +129,27 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     setFirestoreSyncError(false);
     setSyncRetryCount(prev => prev + 1);
   }, []);
+
+  // Dynamically ensure browser tab favicon is active and crisp
+  useEffect(() => {
+    const activeFavicon = siteSettings.faviconUrl || '/favicon-v2.ico';
+    const iconLinks = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']");
+    iconLinks.forEach(link => {
+      const rel = link.getAttribute('rel') || '';
+      const sizes = link.getAttribute('sizes');
+      if (sizes === '32x32') {
+        link.href = `/favicon-32x32-v2.png?v=2`;
+      } else if (sizes === '16x16') {
+        link.href = `/favicon-16x16-v2.png?v=2`;
+      } else if (sizes === '180x180' || rel.includes('apple-touch-icon')) {
+        link.href = `/apple-touch-icon-v2.png?v=2`;
+      } else if (link.type === 'image/svg+xml') {
+        link.href = `/icon-v2.svg?v=2`;
+      } else {
+        link.href = `${activeFavicon.includes('?') ? activeFavicon : activeFavicon + '?v=2'}`;
+      }
+    });
+  }, [siteSettings.faviconUrl]);
 
   // Fetch older articles on demand (for infinite scroll / pagination on Latest News)
   const fetchMoreArticles = useCallback(async (): Promise<Article[]> => {
@@ -323,7 +331,12 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
 
         if (siteSnap.status === 'fulfilled' && siteSnap.value.exists()) {
-          setSiteSettings(siteSnap.value.data() as SiteSettings);
+          const rawSite = siteSnap.value.data() as SiteSettings;
+          setSiteSettings({
+            ...rawSite,
+            contactPhone: "",
+            whatsappNumber: ""
+          });
         }
         if (adsSnap.status === 'fulfilled' && adsSnap.value.exists()) {
           setAdSettings(adsSnap.value.data() as AdSettings);
@@ -380,7 +393,11 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       unsubArticles = onSnapshot(articlesQuery, (snap) => {
         if (!isMounted) return;
         const list: Article[] = [];
-        snap.forEach((d) => list.push(d.data() as Article));
+        snap.forEach((d) => {
+          const art = d.data() as Article;
+          const { article: cleaned } = cleanArticleSlugIfNeeded(art);
+          list.push(cleaned);
+        });
         if (list.length > 0) {
           list.sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime());
           setArticles(list);
@@ -431,7 +448,11 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     // Full articles subscription for Admin CMS to view and manage ALL articles in Firestore
     const unsubAdminArticles = onSnapshot(query(collection(db, "articles"), orderBy("publishedAt", "desc")), (snap) => {
       const list: Article[] = [];
-      snap.forEach((d) => list.push(d.data() as Article));
+      snap.forEach((d) => {
+        const art = d.data() as Article;
+        const { article: cleaned } = cleanArticleSlugIfNeeded(art);
+        list.push(cleaned);
+      });
       if (list.length > 0) {
         list.sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime());
         setArticles(list);
@@ -456,17 +477,20 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         setReporters(list);
       } else {
         setReporters([]);
-        if (snap.empty) {
-          INITIAL_REPORTERS.forEach((item) => {
-            setDoc(doc(db, "reporters", item.id), sanitizeFirestoreData(item)).catch(() => {});
-          });
-        }
       }
     }, (err) => console.warn("Reporters listener notice:", err));
 
     const unsubComments = onSnapshot(collection(db, "comments"), (snap) => {
       const list: Comment[] = [];
-      snap.forEach((d) => list.push(d.data() as Comment));
+      const seen = new Set<string>();
+      snap.forEach((d) => {
+        const data = d.data() as Comment;
+        const commentId = data.id || d.id;
+        if (!seen.has(commentId)) {
+          seen.add(commentId);
+          list.push({ ...data, id: commentId });
+        }
+      });
       if (list.length > 0) {
         list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
         setComments(list);
@@ -477,12 +501,27 @@ export function NewsProvider({ children }: { children: ReactNode }) {
 
     const unsubMedia = onSnapshot(collection(db, "media"), (snap) => {
       const list: MediaItem[] = [];
-      snap.forEach((d) => list.push(d.data() as MediaItem));
+      const seen = new Set<string>();
+      snap.forEach((d) => {
+        const data = d.data() as MediaItem;
+        const mediaId = data.id || d.id;
+        if (!seen.has(mediaId)) {
+          seen.add(mediaId);
+          list.push({ ...data, id: mediaId });
+        }
+      });
       setMedia(list.length > 0 ? list : []);
     }, (err) => console.warn("Media listener notice:", err));
 
     const unsubSettingsSite = onSnapshot(doc(db, "settings", "site"), (snap) => {
-      if (snap.exists()) setSiteSettings(snap.data() as SiteSettings);
+      if (snap.exists()) {
+        const rawSite = snap.data() as SiteSettings;
+        setSiteSettings({
+          ...rawSite,
+          contactPhone: "",
+          whatsappNumber: ""
+        });
+      }
     }, (err) => console.warn("Site settings listener notice:", err));
 
     const unsubSettingsAds = onSnapshot(doc(db, "settings", "ads"), (snap) => {
@@ -501,6 +540,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       unsubSettingsSite();
       unsubSettingsAds();
       unsubSettingsMarket();
+      setIsAdminDataLoaded(false);
     };
   }, [isAdminDataLoaded]);
 
@@ -532,7 +572,8 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   // Article Actions
   const addArticle = async (data: Omit<Article, 'id' | 'views' | 'likes' | 'publishedAt'> & { publishedAt?: string }): Promise<Article> => {
     const id = `a${Date.now()}`;
-    const slug = data.slug && data.slug.trim().length > 0 ? createSlug(data.slug, id) : createSlug(data.title, id);
+    const preferred = data.slug && data.slug.trim().length > 0 ? data.slug.trim() : data.title;
+    const slug = generateUniqueSlug(preferred, articles, id);
     
     const cleanScheduledAt = data.scheduledAt && data.scheduledAt.trim() ? data.scheduledAt.trim() : null;
     const cleanYoutubeUrl = data.youtubeUrl && data.youtubeUrl.trim() ? data.youtubeUrl.trim() : null;
@@ -561,7 +602,20 @@ export function NewsProvider({ children }: { children: ReactNode }) {
 
   const updateArticle = async (id: string, data: Partial<Article>): Promise<void> => {
     const existing = articles.find(a => a.id === id);
-    const updatedSlug = data.slug ? createSlug(data.slug, id) : (data.title ? createSlug(data.title, id) : existing?.slug || id);
+
+    let finalSlug: string;
+    if (data.slug !== undefined && data.slug.trim().length > 0) {
+      const cleanCustomSlug = sanitizeSlug(data.slug);
+      if (existing && cleanCustomSlug === sanitizeSlug(existing.slug)) {
+        finalSlug = sanitizeSlug(existing.slug);
+      } else {
+        finalSlug = generateUniqueSlug(cleanCustomSlug, articles, id);
+      }
+    } else if (existing?.slug) {
+      finalSlug = sanitizeSlug(existing.slug);
+    } else {
+      finalSlug = generateUniqueSlug(data.title || existing?.title || 'news-article', articles, id);
+    }
 
     let cleanScheduledAt = data.scheduledAt !== undefined 
       ? (data.scheduledAt && data.scheduledAt.trim() ? data.scheduledAt.trim() : null)
@@ -577,7 +631,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
 
     const updatedData: Partial<Article> = {
       ...data,
-      slug: updatedSlug,
+      slug: finalSlug,
       updatedAt: new Date().toISOString(),
       scheduledAt: cleanScheduledAt as any,
       youtubeUrl: cleanYoutubeUrl as any,
@@ -608,11 +662,12 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     const original = articles.find(a => a.id === id);
     if (!original) return undefined;
     const newId = `a${Date.now()}`;
+    const baseSlug = `${sanitizeSlug(original.slug || original.title)}-copy`;
     const duplicated: Article = {
       ...original,
       id: newId,
       title: `${original.title} (Copy)`,
-      slug: createSlug(`${original.title}-copy`, newId),
+      slug: generateUniqueSlug(baseSlug, articles, newId),
       publishedAt: new Date().toISOString(),
       views: 0,
       likes: 0,
@@ -649,29 +704,18 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     const todayStr = new Date().toISOString().split('T')[0];
     const nowIso = new Date().toISOString();
 
+    const targetArticle = articles.find(a => a.id === id);
+    if (!targetArticle) return;
+
+    const newViews = (targetArticle.views || 0) + 1;
+    const currentViewsByDate = targetArticle.viewsByDate || {};
+    const updatedViewsByDate = { 
+      ...currentViewsByDate, 
+      [todayStr]: (currentViewsByDate[todayStr] || 0) + 1 
+    };
+
     setArticles(prev => prev.map(a => {
       if (a.id === id) {
-        const newViews = (a.views || 0) + 1;
-        const currentViewsByDate = a.viewsByDate || {};
-        const updatedViewsByDate = { 
-          ...currentViewsByDate, 
-          [todayStr]: (currentViewsByDate[todayStr] || 0) + 1 
-        };
-
-        setDoc(doc(db, "articles", id), { 
-          views: newViews, 
-          viewsByDate: updatedViewsByDate,
-          lastViewedAt: nowIso 
-        }, { merge: true }).catch(() => {});
-
-        addDoc(collection(db, "analytics_events"), {
-          articleId: id,
-          type: 'view',
-          timestamp: nowIso,
-          dateStr: todayStr,
-          categoryIds: a.categoryIds || []
-        }).catch(() => {});
-
         return { 
           ...a, 
           views: newViews, 
@@ -681,35 +725,38 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       }
       return a;
     }));
+
+    setDoc(doc(db, "articles", id), { 
+      views: newViews, 
+      viewsByDate: updatedViewsByDate,
+      lastViewedAt: nowIso 
+    }, { merge: true }).catch(() => {});
+
+    addDoc(collection(db, "analytics_events"), {
+      articleId: id,
+      type: 'view',
+      timestamp: nowIso,
+      dateStr: todayStr,
+      categoryIds: targetArticle.categoryIds || []
+    }).catch(() => {});
   };
 
   const toggleLike = (id: string) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const nowIso = new Date().toISOString();
 
+    const targetArticle = articles.find(a => a.id === id);
+    if (!targetArticle) return;
+
+    const newLikes = (targetArticle.likes || 0) + 1;
+    const currentLikesByDate = targetArticle.likesByDate || {};
+    const updatedLikesByDate = { 
+      ...currentLikesByDate, 
+      [todayStr]: (currentLikesByDate[todayStr] || 0) + 1 
+    };
+
     setArticles(prev => prev.map(a => {
       if (a.id === id) {
-        const newLikes = (a.likes || 0) + 1;
-        const currentLikesByDate = a.likesByDate || {};
-        const updatedLikesByDate = { 
-          ...currentLikesByDate, 
-          [todayStr]: (currentLikesByDate[todayStr] || 0) + 1 
-        };
-
-        setDoc(doc(db, "articles", id), { 
-          likes: newLikes, 
-          likesByDate: updatedLikesByDate,
-          lastLikedAt: nowIso 
-        }, { merge: true }).catch(() => {});
-
-        addDoc(collection(db, "analytics_events"), {
-          articleId: id,
-          type: 'like',
-          timestamp: nowIso,
-          dateStr: todayStr,
-          categoryIds: a.categoryIds || []
-        }).catch(() => {});
-
         return { 
           ...a, 
           likes: newLikes, 
@@ -719,6 +766,20 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       }
       return a;
     }));
+
+    setDoc(doc(db, "articles", id), { 
+      likes: newLikes, 
+      likesByDate: updatedLikesByDate,
+      lastLikedAt: nowIso 
+    }, { merge: true }).catch(() => {});
+
+    addDoc(collection(db, "analytics_events"), {
+      articleId: id,
+      type: 'like',
+      timestamp: nowIso,
+      dateStr: todayStr,
+      categoryIds: targetArticle.categoryIds || []
+    }).catch(() => {});
   };
 
   // Category Actions

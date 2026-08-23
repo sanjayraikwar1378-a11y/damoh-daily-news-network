@@ -74,6 +74,29 @@
         "dateStr": { "type": "string" }
       },
       "required": ["articleId", "type", "timestamp", "dateStr"]
+    },
+    "messages": {
+      "title": "Messages & News Tips",
+      "description": "Visitor contact submissions and news tips",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 150 },
+        "mobileNumber": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "email": { "type": "string", "format": "email", "maxLength": 150 },
+        "message": { "type": "string", "minLength": 5, "maxLength": 5000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["new", "read", "resolved"] }
+      },
+      "required": ["fullName", "mobileNumber", "email", "message", "status"]
     }
+  },
+  "firestore": {
+    "/articles/{articleId}": { "schema": "articles", "description": "News articles collection" },
+    "/categories/{categoryId}": { "schema": "categories", "description": "News categories" },
+    "/reporters/{reporterId}": { "schema": "reporters", "description": "Reporters directory" },
+    "/settings/{settingId}": { "schema": "settings", "description": "System settings" },
+    "/media/{mediaId}": { "schema": "media", "description": "Media library" },
+    "/analytics_events/{eventId}": { "schema": "analytics_events", "description": "Engagement analytics events" },
+    "/messages/{messageId}": { "schema": "messages", "description": "Contact messages and news tips" }
   }
 }

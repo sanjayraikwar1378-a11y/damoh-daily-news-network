@@ -10,6 +10,8 @@ import { ArticleStatus } from "@/data/mock"
 import { getYouTubeEmbedUrl, isValidYouTubeUrl, extractYouTubeId } from "@/lib/youtube"
 import { uploadToCloudinary } from "@/lib/cloudinary"
 import { ResponsiveImage } from "@/components/ResponsiveImage"
+import { RichTextEditor } from "@/components/admin/RichTextEditor"
+import { formatArticleContentForDisplay } from "@/lib/sanitize"
 
 export function AdminCreateNews() {
   const { id } = useParams<{ id?: string }>()
@@ -275,19 +277,18 @@ export function AdminCreateNews() {
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Full Article Content *</label>
+                  <label className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                    <span>Full Article Content *</span>
+                    <span className="text-xs text-red-600 font-normal">(WYSIWYG Rich Text)</span>
+                  </label>
                   <Button type="button" variant="ghost" size="sm" onClick={() => setShowMediaPicker(true)} className="text-red-600 hover:text-red-700">
                     <ImageIcon className="h-4 w-4 mr-1" /> Choose from Media Library
                   </Button>
                 </div>
-                <textarea 
-                  name="content"
+                <RichTextEditor
                   value={formData.content}
-                  onChange={handleChange}
-                  rows={16}
-                  className="flex w-full rounded-md border border-input bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-red-600 font-sans leading-relaxed"
-                  placeholder="Write full detailed story here..."
-                  required
+                  onChange={(html) => setFormData(prev => ({ ...prev, content: html }))}
+                  onChooseFromMedia={() => setShowMediaPicker(true)}
                 />
               </div>
             </CardContent>
@@ -587,7 +588,10 @@ export function AdminCreateNews() {
             {Boolean(formData.imageUrl?.trim()) && (
               <ResponsiveImage src={formData.imageUrl} alt={formData.title || "Preview"} type="article" />
             )}
-            <div className="prose max-w-none text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap">{formData.content}</div>
+            <div 
+              className="article-rich-content max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed text-base md:text-lg"
+              dangerouslySetInnerHTML={{ __html: formatArticleContentForDisplay(formData.content || formData.excerpt) }}
+            />
             
             {/* YouTube Embed in Preview Modal */}
             {formData.youtubeUrl && isValidYouTubeUrl(formData.youtubeUrl) && (

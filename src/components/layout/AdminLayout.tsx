@@ -19,7 +19,8 @@ import {
   Shield,
   LogOut,
   Sparkles,
-  Loader2
+  Loader2,
+  Inbox
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "motion/react"
@@ -80,6 +81,7 @@ export function AdminLayout() {
 
   const navItems = [
     { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
+    { label: "Messages & Tips", path: "/admin/messages", icon: Inbox },
     { label: "Write News", path: "/admin/create", icon: PlusCircle },
     { label: "All News Articles", path: "/admin/news", icon: FileText },
     { label: "Analytics & Traffic", path: "/admin/analytics", icon: BarChart3 },
@@ -130,7 +132,7 @@ export function AdminLayout() {
   }
 
   const displayName = user.displayName || user.email?.split('@')[0].toUpperCase() || "ADMIN"
-  const email = user.email || "admin@damohdaily.com"
+  const email = user.email || ""
   const initial = displayName.charAt(0).toUpperCase()
 
   return (
@@ -148,14 +150,16 @@ export function AdminLayout() {
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
 
-          <Link to="/admin" className="flex flex-col leading-none py-1">
-            <div className="flex items-center gap-1">
-              <span className="text-lg font-black text-red-500">DAMOH</span>
-              <span className="text-lg font-black text-white">DAILY</span>
-            </div>
-            <span className="text-[8px] font-extrabold tracking-wider text-red-400 uppercase">
-              CMS CONTROL CENTER
-            </span>
+          <Link to="/admin" className="flex items-center py-1">
+            <img 
+              src="/logo.png" 
+              alt="Damoh Daily News Network" 
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                if (!target.src.endsWith('/logo.png')) target.src = '/logo.png';
+              }}
+              className="h-8 w-auto max-w-[160px] object-contain" 
+            />
           </Link>
         </div>
 
@@ -196,15 +200,17 @@ export function AdminLayout() {
               className="relative w-[85%] max-w-xs bg-zinc-900 text-zinc-300 h-full flex flex-col z-50 shadow-2xl border-r border-zinc-800"
             >
               <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
-                <div className="flex flex-col leading-none">
-                  <div className="flex items-center gap-1">
-                    <span className="text-lg font-black text-red-500">DAMOH</span>
-                    <span className="text-lg font-black text-white">DAILY</span>
-                  </div>
-                  <span className="text-[8px] font-bold tracking-widest text-zinc-400 uppercase mt-0.5">
-                    FIREBASE SECURED CMS
-                  </span>
-                </div>
+                <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center">
+                  <img 
+                    src="/logo.png" 
+                    alt="Damoh Daily News Network" 
+                    onError={(e) => {
+                      const target = e.currentTarget as HTMLImageElement;
+                      if (!target.src.endsWith('/logo.png')) target.src = '/logo.png';
+                    }}
+                    className="h-8 w-auto max-w-[150px] object-contain" 
+                  />
+                </Link>
                 <button 
                   type="button" 
                   onClick={() => setMobileMenuOpen(false)}
@@ -265,16 +271,18 @@ export function AdminLayout() {
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-zinc-900 text-zinc-300 flex-col shrink-0 min-h-screen sticky top-0 h-screen">
-        <div className="p-6 border-b border-zinc-800 space-y-3">
-          <Link to="/" className="flex flex-col leading-none">
-            <div className="flex items-center gap-1">
-              <span className="text-xl font-black text-red-600">DAMOH</span>
-              <span className="text-xl font-black text-white">DAILY</span>
-            </div>
-            <span className="text-[10px] font-extrabold tracking-[0.2em] text-red-500 uppercase mt-1">
-              NEWS NETWORK
-            </span>
-            <span className="text-[9px] font-bold text-zinc-500 tracking-wider uppercase mt-1 flex items-center gap-1">
+        <div className="p-5 border-b border-zinc-800 space-y-3">
+          <Link to="/" className="flex flex-col items-center group">
+            <img 
+              src="/logo.png" 
+              alt="Damoh Daily News Network" 
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                if (!target.src.endsWith('/logo.png')) target.src = '/logo.png';
+              }}
+              className="h-12 w-auto max-w-[200px] object-contain transition-transform group-hover:scale-[1.02]" 
+            />
+            <span className="text-[9px] font-bold text-zinc-400 tracking-wider uppercase mt-2 flex items-center gap-1">
               <Shield className="h-3 w-3 text-emerald-500" /> FIREBASE CMS CONTROL
             </span>
           </Link>

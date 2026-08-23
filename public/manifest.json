@@ -13,31 +13,31 @@
   "categories": ["news", "magazines"],
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/icon-192-v2.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/icon-512-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-192-maskable.png",
+      "src": "/icon-192-maskable-v2.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-512-maskable.png",
+      "src": "/icon-512-maskable-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon.svg",
+      "src": "/icon-v2.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
@@ -49,21 +49,21 @@
       "short_name": "ताज़ा खबरें",
       "description": "दमोह की ताज़ा और ब्रेकिंग खबरें",
       "url": "/latest",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "/icon-192-v2.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "दमोह लोकल (Damoh Local)",
       "short_name": "दमोह",
       "description": "दमोह जिले की स्थानीय खबरें",
       "url": "/category/damoh",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "/icon-192-v2.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "राजनीति (Politics)",
       "short_name": "राजनीति",
       "description": "मध्य प्रदेश और देश की राजनीतिक हलचल",
       "url": "/category/politics",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [{ "src": "/icon-192-v2.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useNavigate } from "react-router-dom"
 import { formatDistanceToNow } from "date-fns"
 import { 
   Clock, 
@@ -29,9 +29,11 @@ import { AuthorByline } from "@/components/AuthorByline"
 import { StickyLatestNewsWidget } from "@/components/StickyLatestNewsWidget"
 import { ArticleTextToSpeech } from "@/components/ArticleTextToSpeech"
 import { getReadingTime } from "@/lib/utils"
+import { formatArticleContentForDisplay } from "@/lib/sanitize"
 
 export function ArticleDetail() {
   const { slug } = useParams<{ slug: string }>()
+  const navigate = useNavigate()
   const { 
     articles, 
     reporters, 
@@ -162,6 +164,16 @@ export function ArticleDetail() {
     }
   }, [rawArticle, targetKey])
 
+  // Canonical slug auto-redirect on client (e.g. from old broken links with duplicate ID suffixes)
+  useEffect(() => {
+    if (article && article.slug && slug) {
+      const current = decodedSlug || slug;
+      if (current !== article.slug && isMatchingArticle(article, current)) {
+        navigate(`/article/${encodeURIComponent(article.slug)}`, { replace: true });
+      }
+    }
+  }, [article?.slug, slug, decodedSlug, navigate])
+
   // Ref to prevent multiple view counts on re-renders for the same article ID
   const trackedArticleIdRef = useRef<string | null>(null)
 
@@ -278,7 +290,15 @@ export function ArticleDetail() {
       )
       getDocs(q).then((snap) => {
         const list: Comment[] = []
-        snap.forEach(d => list.push(d.data() as Comment))
+        const seen = new Set<string>()
+        snap.forEach(d => {
+          const data = d.data() as Comment
+          const cid = data.id || d.id
+          if (!seen.has(cid)) {
+            seen.add(cid)
+            list.push({ ...data, id: cid })
+          }
+        })
         setFetchedComments(list)
       }).catch(() => {})
     }
@@ -391,7 +411,7 @@ export function ArticleDetail() {
       articleId: article.id,
       articleTitle: article.title,
       userName: commentName.trim(),
-      userEmail: commentEmail.trim() || 'anonymous@damohdaily.com',
+      userEmail: commentEmail.trim() || '',
       content: commentText.trim()
     })
 
@@ -524,6 +544,7 @@ export function ArticleDetail() {
             type="article"
             loading="eager"
             fetchPriority="high"
+            width={800}
             widths={[360, 480, 720, 1080]}
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 800px"
             defaultWidth={800}
@@ -564,9 +585,12 @@ export function ArticleDetail() {
         </div>
 
         {/* Article Body Content */}
-        <div className="prose prose-lg dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed py-1.5 sm:py-4 text-base md:text-lg">
-          {article.content || article.excerpt || "कोई विस्तृत सामग्री उपलब्ध नहीं है।"}
-        </div>
+        <div 
+          className="article-rich-content max-w-none text-zinc-800 dark:text-zinc-200 leading-relaxed py-1.5 sm:py-4 text-base md:text-lg"
+          dangerouslySetInnerHTML={{
+            __html: formatArticleContentForDisplay(article.content || article.excerpt || "कोई विस्तृत सामग्री उपलब्ध नहीं है।")
+          }}
+        />
 
         {/* Embedded YouTube Video Player (Lazy-loaded Facade) */}
         {article.youtubeUrl && getYouTubeEmbedUrl(article.youtubeUrl) && (
@@ -588,7 +612,15 @@ export function ArticleDetail() {
           <div className="my-8 p-4 border border-zinc-200 dark:border-zinc-800 rounded-lg bg-zinc-50 dark:bg-zinc-900 text-center">
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">Advertisement</span>
             <a href={adSettings.articleAd.linkUrl || '#'} target="_blank" rel="noopener noreferrer">
-              <img src={adSettings.articleAd.imageUrl || undefined} alt="Ad" className="mx-auto rounded max-h-40 object-cover" />
+              <img 
+                src={adSettings.articleAd.imageUrl || undefined} 
+                alt="Ad" 
+                loading="lazy"
+                decoding="async"
+                width={728}
+                height={160}
+                className="mx-auto rounded max-h-40 object-cover" 
+              />
             </a>
           </div>
         )}
@@ -721,7 +753,7 @@ export function ArticleDetail() {
 
         {/* Sticky Latest News Sidebar (Desktop) / Bottom Feed (Mobile) */}
         <aside className="lg:col-span-4 space-y-6">
-          <div className="lg:sticky lg:top-20">
+          <div className="lg:sticky lg:top-36">
             <StickyLatestNewsWidget currentArticleId={article.id} limit={8} />
           </div>
         </aside>

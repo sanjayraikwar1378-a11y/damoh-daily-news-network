@@ -158,6 +158,7 @@ export function Home() {
                 type="card"
                 loading="eager"
                 fetchPriority="high"
+                width={800}
                 widths={[360, 480, 720, 1080]}
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 70vw, 800px"
                 defaultWidth={720}
@@ -219,7 +220,16 @@ export function Home() {
               <div className="mt-auto pt-4 border-t border-border text-center">
                 <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">ADVERTISEMENT</span>
                 <a href={adSettings.sidebarAd.linkUrl || '#'} target="_blank" rel="noopener noreferrer">
-                  <ResponsiveImage src={adSettings.sidebarAd.imageUrl} alt="Sidebar Ad" loading="lazy" defaultWidth={360} className="w-full rounded-xl object-cover max-h-48" />
+                  <ResponsiveImage 
+                    src={adSettings.sidebarAd.imageUrl} 
+                    alt="Sidebar Ad" 
+                    loading="lazy" 
+                    width={360}
+                    height={180}
+                    aspectRatio="2/1"
+                    defaultWidth={360} 
+                    className="w-full rounded-xl object-cover max-h-48" 
+                  />
                 </a>
               </div>
             )}
@@ -242,7 +252,17 @@ export function Home() {
               {editorsPick.slice(0, 3).map(article => (
                 <PrefetchLink to={`/article/${article.slug}`} articleSlug={article.slug} articleImageUrl={article.imageUrl} key={article.id} className="group space-y-3">
                   <div className="aspect-video rounded-xl overflow-hidden bg-zinc-800">
-                    <ResponsiveImage src={article.imageUrl} alt={article.title} type="card" loading="lazy" defaultWidth={480} className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500" />
+                    <ResponsiveImage 
+                      src={article.imageUrl} 
+                      alt={article.title} 
+                      type="card" 
+                      loading="lazy" 
+                      width={480}
+                      height={270}
+                      aspectRatio="16/9"
+                      defaultWidth={480} 
+                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500" 
+                    />
                   </div>
                   <h3 className="font-bold text-base text-zinc-100 group-hover:text-amber-400 transition-colors line-clamp-2">
                     {article.title}
@@ -308,6 +328,9 @@ export function Home() {
                           alt={article.title} 
                           type="card" 
                           loading="lazy" 
+                          width={380}
+                          height={214}
+                          aspectRatio="16/9"
                           defaultWidth={380} 
                           className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500" 
                         />
@@ -403,7 +426,17 @@ export function Home() {
               {damohArticles.slice(0, 4).map(article => (
                 <div key={article.id} className="group flex flex-col gap-2 border rounded-xl p-3 bg-card hover:shadow-md transition-shadow">
                   <PrefetchLink to={`/article/${article.slug}`} articleSlug={article.slug} articleImageUrl={article.imageUrl} className="aspect-video rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800">
-                    <ResponsiveImage src={article.imageUrl} alt={article.title} type="card" loading="lazy" defaultWidth={450} className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500" />
+                    <ResponsiveImage 
+                      src={article.imageUrl} 
+                      alt={article.title} 
+                      type="card" 
+                      loading="lazy" 
+                      width={450}
+                      height={253}
+                      aspectRatio="16/9"
+                      defaultWidth={450} 
+                      className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500" 
+                    />
                   </PrefetchLink>
                   <PrefetchLink to={`/article/${article.slug}`} articleSlug={article.slug} articleImageUrl={article.imageUrl}>
                     <h3 className="font-bold text-base leading-snug group-hover:text-red-600 transition-colors line-clamp-2">
@@ -484,7 +517,17 @@ export function Home() {
                   {catArticles.slice(0, 4).map(article => (
                     <div key={article.id} className="group flex flex-col gap-2 border rounded-xl p-3 bg-card hover:shadow-md transition-shadow">
                       <Link to={`/article/${article.slug}`} className="aspect-video rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800">
-                        <ResponsiveImage src={article.imageUrl} alt={article.title} type="card" loading="lazy" defaultWidth={450} className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500" />
+                        <ResponsiveImage 
+                          src={article.imageUrl} 
+                          alt={article.title} 
+                          type="card" 
+                          loading="lazy" 
+                          width={450}
+                          height={253}
+                          aspectRatio="16/9"
+                          defaultWidth={450} 
+                          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500" 
+                        />
                       </Link>
                       <Link to={`/article/${article.slug}`}>
                         <h3 className="font-bold text-base leading-snug group-hover:text-red-600 transition-colors line-clamp-2">
@@ -640,7 +683,17 @@ export function Home() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {publishedArticles.slice(0, 4).map(art => (
               <Link to={`/article/${art.slug}`} key={art.id} className="group relative rounded-xl overflow-hidden aspect-square block bg-zinc-100 dark:bg-zinc-800">
-                <ResponsiveImage src={art.imageUrl} alt={art.title} type="card" loading="lazy" defaultWidth={400} className="w-full h-full object-cover object-center group-hover:scale-110 transition-transform duration-500" />
+                <ResponsiveImage 
+                  src={art.imageUrl} 
+                  alt={art.title} 
+                  type="card" 
+                  loading="lazy" 
+                  width={400}
+                  height={400}
+                  aspectRatio="1/1"
+                  defaultWidth={400} 
+                  className="w-full h-full object-cover object-center group-hover:scale-110 transition-transform duration-500" 
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-3 flex items-end">
                   <p className="text-xs font-bold text-white line-clamp-2">{art.title}</p>
                 </div>
@@ -667,74 +720,60 @@ export function Home() {
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-3 shrink-0 w-full md:w-auto">
-              {siteSettings.whatsappNumber && (
-                <a 
-                  href={`https://wa.me/${siteSettings.whatsappNumber.replace(/[^0-9]/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all"
-                >
-                  <MessageSquare className="h-4 w-4" /> व्हाट्सएप टिप ({siteSettings.whatsappNumber})
-                </a>
-              )}
               <Link 
                 to="/contact"
-                className="px-4 py-2.5 bg-white text-red-700 hover:bg-zinc-100 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all"
+                className="px-5 py-2.5 bg-white text-red-700 hover:bg-zinc-100 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all"
               >
-                <Phone className="h-4 w-4" />संपर्क विवरण (Contact Us)
+                <MessageSquare className="h-4 w-4 text-red-600" />
+                समाचार टिप भेजें (Send News Tip)
               </Link>
+              <a 
+                href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`}
+                className="px-4 py-2.5 bg-red-950/60 hover:bg-red-950/80 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 border border-red-400/30 transition-all"
+              >
+                <Mail className="h-4 w-4" />
+                संपादकीय ईमेल (Email Desk)
+              </a>
             </div>
           </div>
 
           {/* Live Contact Quick Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-            {siteSettings.contactPhone && (
-              <a href={`tel:${siteSettings.contactPhone}`} className="p-3 bg-white/10 hover:bg-white/20 rounded-xl border border-white/20 flex items-center gap-3 transition-colors">
-                <div className="p-2 bg-white/20 rounded-lg shrink-0">
-                  <Phone className="h-4 w-4 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] text-red-200 uppercase font-bold block">फ़ोन (Phone)</span>
-                  <strong className="text-sm font-extrabold text-white truncate block">{siteSettings.contactPhone}</strong>
-                </div>
-              </a>
-            )}
-
-            {siteSettings.whatsappNumber && (
-              <a href={`https://wa.me/${siteSettings.whatsappNumber.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/10 hover:bg-white/20 rounded-xl border border-white/20 flex items-center gap-3 transition-colors">
-                <div className="p-2 bg-emerald-500/30 rounded-lg shrink-0">
-                  <MessageSquare className="h-4 w-4 text-emerald-300" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] text-emerald-200 uppercase font-bold block">व्हाट्सएप (WhatsApp)</span>
-                  <strong className="text-sm font-extrabold text-white truncate block">{siteSettings.whatsappNumber}</strong>
-                </div>
-              </a>
-            )}
-
-            {siteSettings.contactEmail && (
-              <a href={`mailto:${siteSettings.contactEmail}`} className="p-3 bg-white/10 hover:bg-white/20 rounded-xl border border-white/20 flex items-center gap-3 transition-colors">
-                <div className="p-2 bg-white/20 rounded-lg shrink-0">
-                  <Mail className="h-4 w-4 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] text-red-200 uppercase font-bold block">ईमेल (Email)</span>
-                  <strong className="text-xs font-bold text-white truncate block">{siteSettings.contactEmail}</strong>
-                </div>
-              </a>
-            )}
-
-            {siteSettings.contactAddress && (
-              <div className="p-3 bg-white/10 rounded-xl border border-white/20 flex items-center gap-3">
-                <div className="p-2 bg-white/20 rounded-lg shrink-0">
-                  <MapPin className="h-4 w-4 text-amber-300" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] text-red-200 uppercase font-bold block">पता (Address)</span>
-                  <p className="text-xs font-medium text-white line-clamp-1">{siteSettings.contactAddress}</p>
-                </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+            <a 
+              href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} 
+              className="p-3 bg-white/10 hover:bg-white/20 rounded-xl border border-white/20 flex items-center gap-3 transition-colors"
+            >
+              <div className="p-2 bg-white/20 rounded-lg shrink-0">
+                <Mail className="h-4 w-4 text-white" />
               </div>
-            )}
+              <div className="min-w-0">
+                <span className="text-[10px] text-red-200 uppercase font-bold block">आधिकारिक ईमेल (Email)</span>
+                <strong className="text-xs font-bold text-white truncate block">{siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}</strong>
+              </div>
+            </a>
+
+            <div className="p-3 bg-white/10 rounded-xl border border-white/20 flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-lg shrink-0">
+                <MapPin className="h-4 w-4 text-amber-300" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] text-red-200 uppercase font-bold block">कार्यालय पता (Office)</span>
+                <p className="text-xs font-medium text-white line-clamp-1">{siteSettings.contactAddress || "दमोह (मध्य प्रदेश) - 470661"}</p>
+              </div>
+            </div>
+
+            <Link 
+              to="/contact" 
+              className="p-3 bg-white/10 hover:bg-white/20 rounded-xl border border-white/20 flex items-center gap-3 transition-colors"
+            >
+              <div className="p-2 bg-white/20 rounded-lg shrink-0">
+                <MessageSquare className="h-4 w-4 text-white" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] text-red-200 uppercase font-bold block">समाचार डेस्क (Newsroom)</span>
+                <p className="text-xs font-medium text-white">24x7 ऑनलाइन समाचार टिप सेवा &rarr;</p>
+              </div>
+            </Link>
           </div>
         </section>
       </LazySection>

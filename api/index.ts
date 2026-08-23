@@ -2,6 +2,8 @@ import express from "express";
 import path from "path";
 import crypto from "crypto";
 import fs from "fs";
+import sharp from "sharp";
+import { addMessage, getMessages, updateMessageStatus, deleteMessage } from "./messagesStore";
 
 const INITIAL_CATEGORIES = [
   { id: 'c1', name: 'दमोह (Damoh)', slug: 'damoh' },
@@ -55,103 +57,44 @@ function parseFirestoreFields(fields: Record<string, any>): Record<string, any> 
   return result;
 }
 
+// Known legacy / broken slug mappings for server-side permanent 301 redirect
+const LEGACY_SLUG_REDIRECTS: Record<string, string> = {
+  "singrampur-tagra-mohalla-drain-problem-cremation-damoh-rain-a1787301996708-a1787301996708-a1787301996708": "singrampur-tagra-mohalla-drain-problem",
+  "singrampur-tagra-mohalla-drain-problem-cremation-damoh-rain-a1787301996708-a1787301996708": "singrampur-tagra-mohalla-drain-problem",
+  "singrampur-tagra-mohalla-drain-problem-cremation-damoh-rain-a1787301996708": "singrampur-tagra-mohalla-drain-problem",
+  "singrampur-wagra-mahala-drain-problem": "singrampur-tagra-mohalla-drain-problem",
+  "singrampur-wagra-mohalla-drain-problem": "singrampur-tagra-mohalla-drain-problem",
+  "singrampur-tagra-mahala-drain-problem": "singrampur-tagra-mohalla-drain-problem",
+  "singrampur-wagra-mahala-drain": "singrampur-tagra-mohalla-drain-problem",
+  "singrampur-tagra-mohalla-drain": "singrampur-tagra-mohalla-drain-problem",
+};
+
+function stripServerGeneratedSuffixes(slug: string): string {
+  if (!slug) return '';
+  let cleaned = slug.trim();
+  if (LEGACY_SLUG_REDIRECTS[cleaned]) return LEGACY_SLUG_REDIRECTS[cleaned];
+  let prev = '';
+  while (prev !== cleaned) {
+    prev = cleaned;
+    cleaned = cleaned
+      .replace(/-a\d{6,}(?=-a\d{6,}|$)/gi, '')
+      .replace(/-a\d{6,}$/gi, '')
+      .replace(/-\d{10,}$/g, '')
+      .replace(/-+$/, '');
+  }
+  if (LEGACY_SLUG_REDIRECTS[cleaned]) return LEGACY_SLUG_REDIRECTS[cleaned];
+  if (cleaned.includes('singrampur') && (cleaned.includes('tagra') || cleaned.includes('wagra') || cleaned.includes('mohalla') || cleaned.includes('mahala') || cleaned.includes('drain'))) {
+    return 'singrampur-tagra-mohalla-drain-problem';
+  }
+  return cleaned;
+}
+
 // Server-side in-memory caches to minimize Firestore REST latency for SSR and crawlers
 const serverArticleCache = new Map<string, { data: Record<string, any> | null; timestamp: number }>();
 const SERVER_ARTICLE_CACHE_TTL = 60 * 1000; // 60 seconds TTL
 
 let serverFeedCache: { data: Array<Record<string, any>>; timestamp: number } | null = null;
 const SERVER_FEED_CACHE_TTL = 60 * 1000; // 60 seconds TTL
-
-async function getArticleBySlug(slugInput: string): Promise<Record<string, any> | null> {
-  if (!slugInput) return null;
-  const rawClean = slugInput.trim().split('?')[0].split('#')[0];
-  const cleanSlug = rawClean.replace(/\.jpg$/i, "");
-  let decodedSlug = cleanSlug;
-  try {
-    decodedSlug = decodeURIComponent(cleanSlug);
-  } catch (e) {
-    // ignore decode error
-  }
-
-  // Check in-memory server cache first
-  const cacheKey = cleanSlug.toLowerCase();
-  const cached = serverArticleCache.get(cacheKey) || serverArticleCache.get(decodedSlug.toLowerCase());
-  if (cached && (Date.now() - cached.timestamp < SERVER_ARTICLE_CACHE_TTL)) {
-    return cached.data;
-  }
-
-  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
-
-  try {
-    const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
-    
-    // Attempt 1: Match by exact slug or decoded slug
-    const slugsToTry = Array.from(new Set([cleanSlug, decodedSlug]));
-    for (const slugTry of slugsToTry) {
-      const response = await fetch(queryUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          structuredQuery: {
-            from: [{ collectionId: "articles" }],
-            where: {
-              fieldFilter: {
-                field: { fieldPath: "slug" },
-                op: "EQUAL",
-                value: { stringValue: slugTry }
-              }
-            },
-            limit: 1
-          }
-        })
-      });
-
-      if (response.ok) {
-        const results = await response.json();
-        if (Array.isArray(results) && results[0]?.document?.fields) {
-          const parsed = parseFirestoreFields(results[0].document.fields);
-          if (parsed) {
-            const entry = { data: parsed, timestamp: Date.now() };
-            serverArticleCache.set(cacheKey, entry);
-            if (parsed.id) serverArticleCache.set(String(parsed.id).toLowerCase(), entry);
-            if (parsed.slug) serverArticleCache.set(String(parsed.slug).toLowerCase(), entry);
-            return parsed;
-          }
-        }
-      }
-    }
-
-    // Attempt 2: Match by Document ID if slug contains article ID (e.g. a1785337946908)
-    const docIdMatch = cleanSlug.match(/a\d+/);
-    const docId = docIdMatch ? docIdMatch[0] : cleanSlug;
-
-    const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles/${docId}`;
-    const docRes = await fetch(docUrl);
-    if (docRes.ok) {
-      const docData = await docRes.json();
-      if (docData?.fields) {
-        const parsed = parseFirestoreFields(docData.fields);
-        if (parsed) {
-          const entry = { data: parsed, timestamp: Date.now() };
-          serverArticleCache.set(cacheKey, entry);
-          if (parsed.id) serverArticleCache.set(String(parsed.id).toLowerCase(), entry);
-          if (parsed.slug) serverArticleCache.set(String(parsed.slug).toLowerCase(), entry);
-          return parsed;
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Error fetching article from Firestore REST API:", err);
-  }
-
-  // Exact match only against mock fallback if firestore returns null and it explicitly matches the requested slug/id
-  const mockMatch = MOCK_ARTICLES_FALLBACK.find(
-    a => (a.slug && a.slug === cleanSlug) || (a.id && a.id === cleanSlug) || (a.slug && a.slug === decodedSlug)
-  );
-  if (mockMatch) return mockMatch;
-
-  return null;
-}
 
 async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
   const now = Date.now();
@@ -193,6 +136,133 @@ async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
   return MOCK_ARTICLES_FALLBACK;
 }
 
+async function getArticleBySlug(slugInput: string): Promise<Record<string, any> | null> {
+  if (!slugInput) return null;
+  const rawClean = slugInput.trim().split('?')[0].split('#')[0];
+  const cleanSlug = rawClean.replace(/\.jpg$/i, "");
+  let decodedSlug = cleanSlug;
+  try {
+    decodedSlug = decodeURIComponent(cleanSlug);
+  } catch (e) {
+    // ignore decode error
+  }
+
+  const strippedSlug = stripServerGeneratedSuffixes(decodedSlug);
+
+  // Check in-memory server cache first
+  const cacheKey = cleanSlug.toLowerCase();
+  const cached = serverArticleCache.get(cacheKey) || 
+                 serverArticleCache.get(decodedSlug.toLowerCase()) ||
+                 serverArticleCache.get(strippedSlug.toLowerCase());
+  if (cached && (Date.now() - cached.timestamp < SERVER_ARTICLE_CACHE_TTL)) {
+    return cached.data;
+  }
+
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
+
+  try {
+    const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+    
+    // Attempt 1: Match by exact slug, decoded slug, or stripped slug
+    const knownRedirect = LEGACY_SLUG_REDIRECTS[cleanSlug] || LEGACY_SLUG_REDIRECTS[decodedSlug] || LEGACY_SLUG_REDIRECTS[strippedSlug];
+    const slugsToTry = Array.from(new Set([cleanSlug, decodedSlug, strippedSlug, knownRedirect].filter(Boolean)));
+    for (const slugTry of slugsToTry) {
+      const response = await fetch(queryUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: "articles" }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: "slug" },
+                op: "EQUAL",
+                value: { stringValue: slugTry }
+              }
+            },
+            limit: 1
+          }
+        })
+      });
+
+      if (response.ok) {
+        const results = await response.json();
+        if (Array.isArray(results) && results[0]?.document?.fields) {
+          const parsed = parseFirestoreFields(results[0].document.fields);
+          if (parsed) {
+            const entry = { data: parsed, timestamp: Date.now() };
+            serverArticleCache.set(cacheKey, entry);
+            if (parsed.id) serverArticleCache.set(String(parsed.id).toLowerCase(), entry);
+            if (parsed.slug) serverArticleCache.set(String(parsed.slug).toLowerCase(), entry);
+            return parsed;
+          }
+        }
+      }
+    }
+
+    // Attempt 2: Match by Document ID if slug contains article ID (e.g. a1787301996708)
+    const docIdMatch = cleanSlug.match(/a\d+/);
+    if (docIdMatch) {
+      const docId = docIdMatch[0];
+      const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles/${docId}`;
+      const docRes = await fetch(docUrl);
+      if (docRes.ok) {
+        const docData = await docRes.json();
+        if (docData?.fields) {
+          const parsed = parseFirestoreFields(docData.fields);
+          if (parsed) {
+            const entry = { data: parsed, timestamp: Date.now() };
+            serverArticleCache.set(cacheKey, entry);
+            if (parsed.id) serverArticleCache.set(String(parsed.id).toLowerCase(), entry);
+            if (parsed.slug) serverArticleCache.set(String(parsed.slug).toLowerCase(), entry);
+            return parsed;
+          }
+        }
+      }
+    }
+
+    // Attempt 3: Match from loaded/cached feed articles if direct single query returned no doc
+    const allArticles = await getAllArticlesForFeed();
+    const feedMatch = allArticles.find(a => {
+      if (!a) return false;
+      const aSlug = String(a.slug || "").toLowerCase();
+      const aId = String(a.id || "").toLowerCase();
+      const aStripped = stripServerGeneratedSuffixes(aSlug);
+      const cleanLower = cleanSlug.toLowerCase();
+      const decodedLower = decodedSlug.toLowerCase();
+      const strippedLower = strippedSlug.toLowerCase();
+
+      return aSlug === cleanLower ||
+             aSlug === decodedLower ||
+             aSlug === strippedLower ||
+             (knownRedirect && aSlug === knownRedirect.toLowerCase()) ||
+             (aId && (cleanLower === aId || cleanLower.includes(aId) || decodedLower.includes(aId))) ||
+             (aStripped && (aStripped === strippedLower || aStripped === cleanLower || aStripped === decodedLower));
+    });
+
+    if (feedMatch) {
+      const entry = { data: feedMatch, timestamp: Date.now() };
+      serverArticleCache.set(cacheKey, entry);
+      if (feedMatch.id) serverArticleCache.set(String(feedMatch.id).toLowerCase(), entry);
+      if (feedMatch.slug) serverArticleCache.set(String(feedMatch.slug).toLowerCase(), entry);
+      return feedMatch;
+    }
+  } catch (err) {
+    console.error("Error fetching article from Firestore REST API:", err);
+  }
+
+  // Exact match only against mock fallback if firestore returns null and it explicitly matches the requested slug/id
+  const mockMatch = MOCK_ARTICLES_FALLBACK.find(
+    a => (a.slug && a.slug === cleanSlug) || 
+         (a.id && a.id === cleanSlug) || 
+         (a.slug && a.slug === decodedSlug) ||
+         (a.slug && a.slug === strippedSlug)
+  );
+  if (mockMatch) return mockMatch;
+
+  return null;
+}
+
 function escapeHtml(str: string): string {
   if (!str) return "";
   return String(str)
@@ -208,16 +278,96 @@ function stripTags(str: string): string {
   return str.replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
 }
 
+function getBaseUrl(req: express.Request): string {
+  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/+$/, "");
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/+$/, "");
+
+  const hostHeader = (req.headers["x-forwarded-host"] as string) || req.headers.host || (process.env.VERCEL_URL ? `${process.env.VERCEL_URL}` : "localhost:3000");
+  const host = hostHeader.split(",")[0].trim();
+
+  let proto = (req.headers["x-forwarded-proto"] as string) || (req.headers["x-forwarded-ssl"] === "on" ? "https" : "");
+  if (proto) {
+    proto = proto.split(",")[0].trim();
+  }
+  if (!proto) {
+    proto = (host.startsWith("localhost") || host.startsWith("127.0.0.1")) ? "http" : "https";
+  }
+  return `${proto}://${host}`;
+}
+
+const serverImageBufferCache = new Map<string, { buffer: Buffer; contentType: string; timestamp: number }>();
+const SERVER_IMAGE_CACHE_TTL = 15 * 60 * 1000; // 15 minutes TTL
+
+let defaultShareImageBuffer: Buffer | null = null;
+
+async function getDefaultShareImageBuffer(): Promise<Buffer> {
+  if (defaultShareImageBuffer && defaultShareImageBuffer.length > 0) {
+    return defaultShareImageBuffer;
+  }
+
+  const logoPath = path.resolve(process.cwd(), "public", "logo.png");
+  if (fs.existsSync(logoPath)) {
+    try {
+      const rawLogo = fs.readFileSync(logoPath);
+      // Create an optimal 1200x630 Open Graph banner with centered branding on rich background
+      defaultShareImageBuffer = await sharp({
+        create: {
+          width: 1200,
+          height: 630,
+          channels: 4,
+          background: { r: 24, g: 24, b: 27, alpha: 1 }
+        }
+      })
+      .composite([{
+        input: await sharp(rawLogo).resize(960, 480, { fit: 'inside' }).toBuffer(),
+        gravity: 'center'
+      }])
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+
+      return defaultShareImageBuffer;
+    } catch (e) {
+      console.warn("sharp composite failed for default share image, falling back to raw logo:", e);
+      if (fs.existsSync(logoPath)) {
+        defaultShareImageBuffer = fs.readFileSync(logoPath);
+        return defaultShareImageBuffer;
+      }
+    }
+  }
+
+  return Buffer.from("");
+}
+
+async function createResizedImageBuffer(inputBuffer: Buffer, targetMime: 'image/jpeg' | 'image/png' = 'image/jpeg'): Promise<Buffer> {
+  try {
+    if (targetMime === 'image/png') {
+      return await sharp(inputBuffer)
+        .resize(1200, 630, { fit: 'contain', background: { r: 24, g: 24, b: 27, alpha: 1 } })
+        .png({ quality: 90 })
+        .toBuffer();
+    }
+
+    return await sharp(inputBuffer)
+      .resize(1200, 630, { fit: 'cover', position: 'center' })
+      .jpeg({ quality: 85, mozjpeg: true })
+      .toBuffer();
+  } catch (err) {
+    console.warn("sharp image resize warning:", err);
+    return inputBuffer;
+  }
+}
+
 function getArticleImageUrl(article: Record<string, any> | null, slug: string, baseUrl: string): string {
   if (!article) {
     return `${baseUrl}/social-preview.jpg`;
   }
 
   const rawImage = article.imageUrl || article.ogImage || article.featuredImage || article.image || article.photoUrl;
+  const safeSlug = encodeURIComponent(slug || article.slug || article.id || "article");
 
-  // 1. Base64 Data URI -> Serve via binary image route
+  // 1. Base64 Data URI -> Always serve via high-performance binary image endpoint
   if (rawImage && typeof rawImage === "string" && rawImage.toLowerCase().startsWith("data:")) {
-    return `${baseUrl}/api/article-image/${slug}.jpg`;
+    return `${baseUrl}/api/article-image/${safeSlug}.jpg`;
   }
 
   // 2. Direct HTTP/HTTPS Image URL
@@ -240,8 +390,8 @@ function getArticleImageUrl(article: Record<string, any> | null, slug: string, b
     }
   }
 
-  // 4. Fallback default image
-  return `${baseUrl}/social-preview.jpg`;
+  // 4. Default fallback binary endpoint
+  return `${baseUrl}/api/article-image/${safeSlug}.jpg`;
 }
 
 function generateRobotsTxt(baseUrl: string): string {
@@ -259,7 +409,8 @@ function formatArticleBodyForSSR(content: string, excerpt: string): string {
   const text = (content || excerpt || "").trim();
   if (!text) return "";
 
-  if (text.includes("<p>") || text.includes("<div>")) {
+  const hasHtml = /<\s*(p|h[1-6]|ul|ol|li|blockquote|div|hr|br)\b[^>]*>/i.test(text);
+  if (hasHtml) {
     return text;
   }
 
@@ -269,6 +420,19 @@ function formatArticleBodyForSSR(content: string, excerpt: string): string {
     .filter(Boolean)
     .map(p => `<p style="margin-bottom:1.1rem;font-size:1.125rem;line-height:1.75;color:#27272a;">${escapeHtml(p)}</p>`)
     .join("\n");
+}
+
+function isPubliclyPublishedArticle(art: Record<string, any>): boolean {
+  if (!art) return false;
+  const status = art.status || "published";
+  if (status !== "published") return false;
+  if (art.scheduledAt) {
+    const scheduledTime = new Date(art.scheduledAt).getTime();
+    if (!isNaN(scheduledTime) && scheduledTime > Date.now()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 async function generateSitemapXml(baseUrl: string): Promise<string> {
@@ -296,6 +460,7 @@ async function generateSitemapXml(baseUrl: string): Promise<string> {
 
   for (const art of articles) {
     if (!art.slug && !art.id) continue;
+    if (!isPubliclyPublishedArticle(art)) continue;
     const articleSlug = art.slug || art.id;
     const pubDate = art.publishedAt || nowIso;
     const title = escapeHtml(art.title || "Damoh News");
@@ -338,6 +503,7 @@ async function generateRssFeedXml(baseUrl: string): Promise<string> {
   let itemsXml = "";
   for (const art of articles) {
     if (!art.slug && !art.id) continue;
+    if (!isPubliclyPublishedArticle(art)) continue;
     const articleSlug = art.slug || art.id;
     const pubDate = art.publishedAt ? new Date(art.publishedAt).toUTCString() : nowRssDate;
     const title = escapeHtml(art.title || "Damoh News");
@@ -565,12 +731,7 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
     "@type": "NewsMediaOrganization",
     "name": "Damoh Daily News",
     "url": baseUrl,
-    "logo": `${baseUrl}/icon-512.png`,
-    "sameAs": [
-      "https://facebook.com",
-      "https://twitter.com",
-      "https://instagram.com"
-    ]
+    "logo": `${baseUrl}/icon-512.png`
   };
 
   const metaTagsHtml = `
@@ -586,8 +747,10 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
     <meta property="og:description" content="${description}">
     <meta property="og:image" content="${imageUrl}">
     <meta property="og:image:secure_url" content="${imageUrl}">
+    <meta property="og:image:type" content="image/jpeg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="${title}">
     <meta property="og:url" content="${canonicalUrl}">
     <meta property="og:locale" content="hi_IN">
 
@@ -597,6 +760,7 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
     <meta name="twitter:title" content="${title}">
     <meta name="twitter:description" content="${description}">
     <meta name="twitter:image" content="${imageUrl}">
+    <meta name="twitter:image:alt" content="${title}">
 
     <!-- Google Search Console Organization Schema -->
     <script type="application/ld+json">${JSON.stringify(jsonLdOrganization)}</script>
@@ -653,6 +817,158 @@ export function createExpressApp() {
   app.get("/api/health", (_req, res) => {
     res.status(200).json({ status: "ok" });
   });
+
+  // Reusable Handler for News Tips & Contact Messages (Guaranteed Persistent Delivery)
+  const handleNewsTipSubmission = async (req: express.Request, res: express.Response) => {
+    try {
+      const body = req.body || {};
+      
+      // Normalize field names across various client submission schemas
+      const rawName = body.fullName || body.name || body.author || body.sender || "";
+      const rawMobile = body.mobileNumber || body.phone || body.mobile || body.contact || "";
+      const rawEmail = body.email || body.mail || "";
+      const rawMessage = body.message || body.tip || body.content || body.details || body.newsTip || "";
+
+      const trimmedName = String(rawName).trim();
+      if (!trimmedName || trimmedName.length < 2) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "कृपया अपना पूरा नाम (कम से कम 2 अक्षर) दर्ज करें। (Please enter your full name, at least 2 characters)" 
+        });
+      }
+
+      // Clean mobile number (strip non-digits and normalize +91 / 0 prefix)
+      let cleanPhone = String(rawMobile).replace(/\D/g, "");
+      if (cleanPhone.length === 12 && cleanPhone.startsWith("91")) {
+        cleanPhone = cleanPhone.slice(2);
+      } else if (cleanPhone.length === 11 && cleanPhone.startsWith("0")) {
+        cleanPhone = cleanPhone.slice(1);
+      }
+
+      if (!cleanPhone || cleanPhone.length < 10) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "कृपया 10 अंकों का वैध मोबाइल नंबर दर्ज करें। (Please enter a valid 10-digit mobile number)" 
+        });
+      }
+
+      const trimmedEmail = String(rawEmail).trim();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (trimmedEmail && !emailRegex.test(trimmedEmail)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "कृपया एक वैध ईमेल पता दर्ज करें (उदा. name@example.com)। (Please enter a valid email address)" 
+        });
+      }
+
+      const trimmedMessage = String(rawMessage).trim();
+      if (!trimmedMessage || trimmedMessage.length < 5) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "कृपया समाचार टिप या संदेश (कम से कम 5 अक्षर) दर्ज करें। (Please enter a news tip or message with at least 5 characters)" 
+        });
+      }
+
+      // 1. Persist directly to server storage system
+      const savedRecord = addMessage({
+        fullName: trimmedName,
+        mobileNumber: cleanPhone,
+        email: trimmedEmail || "no-email-provided@damohdaily.in",
+        message: trimmedMessage
+      });
+
+      // 2. Non-blocking async sync attempt to Firestore
+      const apiKey = process.env.VITE_FIREBASE_API_KEY || "AIzaSyAqqGLWs0rXdM_Cp2q2HPkDgToASXCCoCM";
+      const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "damoh-daily-news";
+      const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/messages?key=${apiKey}`;
+
+      fetch(firestoreUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields: {
+            fullName: { stringValue: trimmedName },
+            mobileNumber: { stringValue: cleanPhone },
+            email: { stringValue: trimmedEmail || "" },
+            message: { stringValue: trimmedMessage },
+            createdAt: { timestampValue: new Date().toISOString() },
+            status: { stringValue: "new" }
+          }
+        })
+      }).catch((err) => {
+        console.warn("Background Firestore sync notice for message/tip:", err?.message || err);
+      });
+
+      return res.status(200).json({ 
+        success: true, 
+        id: savedRecord.id,
+        message: "News tip submitted successfully"
+      });
+    } catch (err: any) {
+      console.error("Server error in news tip submission:", err);
+      return res.status(500).json({ 
+        success: false, 
+        message: err?.message || "Internal server error while saving news tip" 
+      });
+    }
+  };
+
+  // API Routes for News Tips and Contact Messages (with all aliases)
+  app.post("/api/send-news-tip", handleNewsTipSubmission);
+  app.post("/api/send-tip", handleNewsTipSubmission);
+  app.post("/api/tips", handleNewsTipSubmission);
+  app.post("/api/news-tips", handleNewsTipSubmission);
+  app.post("/api/submit-news", handleNewsTipSubmission);
+  app.post("/api/messages", handleNewsTipSubmission);
+  app.post("/api/contact", handleNewsTipSubmission);
+
+  // Admin API Routes for managing received Contact Messages & News Tips
+  const handleGetAdminMessages = (_req: express.Request, res: express.Response) => {
+    try {
+      const list = getMessages();
+      return res.status(200).json(list);
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || "Failed to load messages" });
+    }
+  };
+
+  app.get("/api/admin/messages", handleGetAdminMessages);
+  app.get("/api/admin/tips", handleGetAdminMessages);
+  app.get("/api/admin/news-tips", handleGetAdminMessages);
+
+  const handlePatchAdminMessage = (req: express.Request, res: express.Response) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body || {};
+      if (!["new", "read", "resolved"].includes(status)) {
+        return res.status(400).json({ success: false, message: "Invalid status" });
+      }
+      const ok = updateMessageStatus(id, status);
+      if (!ok) return res.status(404).json({ success: false, message: "Message not found" });
+      return res.status(200).json({ success: true, message: "Message status updated" });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || "Failed to update message" });
+    }
+  };
+
+  app.patch("/api/admin/messages/:id", handlePatchAdminMessage);
+  app.patch("/api/admin/tips/:id", handlePatchAdminMessage);
+  app.patch("/api/admin/news-tips/:id", handlePatchAdminMessage);
+
+  const handleDeleteAdminMessage = (req: express.Request, res: express.Response) => {
+    try {
+      const { id } = req.params;
+      const ok = deleteMessage(id);
+      if (!ok) return res.status(404).json({ success: false, message: "Message not found" });
+      return res.status(200).json({ success: true, message: "Message deleted successfully" });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || "Failed to delete message" });
+    }
+  };
+
+  app.delete("/api/admin/messages/:id", handleDeleteAdminMessage);
+  app.delete("/api/admin/tips/:id", handleDeleteAdminMessage);
+  app.delete("/api/admin/news-tips/:id", handleDeleteAdminMessage);
 
   // API Route for Cloudinary Signed Uploads
   app.post("/api/cloudinary-sign", (req, res) => {
@@ -761,68 +1077,138 @@ export function createExpressApp() {
     }
   });
 
-  // Default fallback social sharing image endpoint (1200x630)
-  app.get("/social-preview.jpg", (_req, res) => {
-    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
-    res.redirect(302, DEFAULT_SHARE_IMAGE);
+  // Default fallback social sharing image endpoint (1200x630 binary JPEG)
+  app.get("/social-preview.jpg", async (_req, res) => {
+    try {
+      const buf = await getDefaultShareImageBuffer();
+      if (buf && buf.length > 0) {
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("Content-Length", buf.length);
+        res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+        return res.status(200).send(buf);
+      }
+    } catch (err) {
+      console.error("Error serving social-preview.jpg:", err);
+    }
+    const logoPath = path.resolve(process.cwd(), "public", "logo.png");
+    if (fs.existsSync(logoPath)) {
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+      return res.status(200).sendFile(logoPath);
+    }
+    res.status(404).send("Not found");
   });
 
   // Serve binary article image for social crawlers (WhatsApp, Facebook, Twitter, Telegram)
   app.get(["/api/article-image/:slug", "/api/article-image/:slug.jpg", "/api/article-image/*"], async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
     try {
       let rawSlug = req.params.slug || req.params[0] || req.path.replace(/^\/api\/article-image\//, "") || "";
-      let slug = rawSlug.replace(/\.jpg$/i, "");
+      let slug = rawSlug.replace(/\.jpg$/i, "").replace(/\.png$/i, "").replace(/\.webp$/i, "");
       if (slug.startsWith("article-image/")) {
         slug = slug.replace(/^article-image\//, "");
       }
+      try {
+        slug = decodeURIComponent(slug);
+      } catch {}
+
+      const cleanCacheKey = slug.toLowerCase().trim();
+
+      // 1. Check in-memory buffer cache for ultra-fast instant 200 OK delivery
+      const cached = serverImageBufferCache.get(cleanCacheKey);
+      if (cached && (Date.now() - cached.timestamp < SERVER_IMAGE_CACHE_TTL)) {
+        res.setHeader("Content-Type", cached.contentType);
+        res.setHeader("Content-Length", cached.buffer.length);
+        res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+        return res.status(200).send(cached.buffer);
+      }
+
       const article = await getArticleBySlug(slug);
 
       if (article) {
         const rawImage = article.imageUrl || article.ogImage || article.featuredImage || article.image || article.photoUrl;
 
-        // 1. Handle Base64 Data URIs
+        // Case A: Base64 Data URI
         if (rawImage && typeof rawImage === "string" && rawImage.toLowerCase().startsWith("data:")) {
           const match = rawImage.match(/^data:(image\/[a-zA-Z+-]+);base64,(.+)$/);
           if (match) {
-            const mimeType = match[1];
-            const base64Data = match[2];
-            const imgBuffer = Buffer.from(base64Data, "base64");
+            const rawBuffer = Buffer.from(match[2], "base64");
+            const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
+            const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
+            serverImageBufferCache.set(cleanCacheKey, entry);
 
-            res.setHeader("Content-Type", mimeType);
-            res.setHeader("Content-Length", imgBuffer.length);
+            res.setHeader("Content-Type", "image/jpeg");
+            res.setHeader("Content-Length", optimizedBuffer.length);
             res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
-            return res.status(200).send(imgBuffer);
+            return res.status(200).send(optimizedBuffer);
           }
         }
 
-        // 2. Handle HTTP/HTTPS URLs
+        // Case B: Remote HTTPS URL (Cloudinary, Unsplash, Firebase Storage, etc.)
         if (rawImage && typeof rawImage === "string" && rawImage.trim() && !rawImage.toLowerCase().startsWith("data:")) {
           let url = rawImage.trim();
           if (url.startsWith("//")) url = `https:${url}`;
           if (url.startsWith("http://")) url = `https://${url.slice(7)}`;
           if (url.startsWith("https://")) {
-            res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
-            return res.redirect(302, url);
+            try {
+              const fetchRes = await fetch(url, { headers: { "User-Agent": "DamohDailyNews-ImageProxy/1.0" } });
+              if (fetchRes.ok) {
+                const arrayBuf = await fetchRes.arrayBuffer();
+                const rawBuffer = Buffer.from(arrayBuf);
+                const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
+                const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
+                serverImageBufferCache.set(cleanCacheKey, entry);
+
+                res.setHeader("Content-Type", "image/jpeg");
+                res.setHeader("Content-Length", optimizedBuffer.length);
+                res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+                return res.status(200).send(optimizedBuffer);
+              }
+            } catch (fetchErr) {
+              console.warn("Error fetching remote article image on proxy:", fetchErr);
+            }
           }
         }
 
-        // 3. Handle YouTube Shorts / Video Thumbnails
+        // Case C: YouTube Thumbnail
         if (article.youtubeUrl && typeof article.youtubeUrl === "string") {
           const ytMatch = article.youtubeUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
           if (ytMatch && ytMatch[1]) {
-            res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
-            return res.redirect(302, `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`);
+            try {
+              const ytUrl = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+              const ytRes = await fetch(ytUrl);
+              if (ytRes.ok) {
+                const arrayBuf = await ytRes.arrayBuffer();
+                const rawBuffer = Buffer.from(arrayBuf);
+                const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
+                const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
+                serverImageBufferCache.set(cleanCacheKey, entry);
+
+                res.setHeader("Content-Type", "image/jpeg");
+                res.setHeader("Content-Length", optimizedBuffer.length);
+                res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+                return res.status(200).send(optimizedBuffer);
+              }
+            } catch (ytErr) {
+              console.warn("Error fetching YouTube thumbnail:", ytErr);
+            }
           }
         }
       }
 
-      // 4. Default fallback
-      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
-      return res.redirect(302, DEFAULT_SHARE_IMAGE);
+      // Default fallback: Always return HTTP 200 with the binary default share image (NEVER redirect!)
+      const fallbackBuf = await getDefaultShareImageBuffer();
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Content-Length", fallbackBuf.length);
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.status(200).send(fallbackBuf);
     } catch (err) {
       console.error("Error serving article image:", err);
+      const fallbackBuf = await getDefaultShareImageBuffer();
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Content-Length", fallbackBuf.length);
       res.setHeader("Cache-Control", "public, max-age=300");
-      return res.redirect(302, DEFAULT_SHARE_IMAGE);
+      return res.status(200).send(fallbackBuf);
     }
   });
 
@@ -843,7 +1229,7 @@ export function createExpressApp() {
     const manifestPath = path.resolve(process.cwd(), "public", "manifest.json");
     if (fs.existsSync(manifestPath)) {
       res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
-      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(manifestPath);
     } else {
       res.status(404).json({ error: "manifest not found" });
@@ -851,29 +1237,51 @@ export function createExpressApp() {
   });
 
   app.get([
+    "/favicon.ico",
+    "/favicon-v2.ico",
     "/icon.svg", 
+    "/icon-v2.svg",
     "/icon.png", 
+    "/icon-1024.png",
+    "/icon-1024-v2.png",
     "/icon-192.png", 
+    "/icon-192-v2.png", 
     "/icon-512.png",
+    "/icon-512-v2.png",
     "/icon-192-maskable.png",
+    "/icon-192-maskable-v2.png",
     "/icon-512-maskable.png",
+    "/icon-512-maskable-v2.png",
     "/apple-touch-icon.png",
+    "/apple-touch-icon-v2.png",
     "/favicon.png",
+    "/favicon-v2.png",
     "/favicon-48x48.png",
+    "/favicon-48x48-v2.png",
     "/favicon-32x32.png",
-    "/favicon-16x16.png"
+    "/favicon-32x32-v2.png",
+    "/favicon-16x16.png",
+    "/favicon-16x16-v2.png"
   ], (req, res) => {
-    const filename = req.path.replace(/^\//, '') || 'icon.svg';
+    const filename = req.path.replace(/^\//, '') || 'favicon-v2.ico';
     const iconPath = path.resolve(process.cwd(), "public", filename);
     if (fs.existsSync(iconPath)) {
-      const isSvg = filename.endsWith('.svg');
-      res.setHeader("Content-Type", isSvg ? "image/svg+xml" : "image/png");
-      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+      if (filename.endsWith('.svg')) {
+        res.setHeader("Content-Type", "image/svg+xml");
+      } else if (filename.endsWith('.ico')) {
+        res.setHeader("Content-Type", "image/x-icon");
+      } else if (filename.endsWith('.webp')) {
+        res.setHeader("Content-Type", "image/webp");
+      } else {
+        res.setHeader("Content-Type", "image/png");
+      }
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(iconPath);
     } else {
-      const fallbackPath = path.resolve(process.cwd(), "public", "icon-192.png");
+      const fallbackPath = path.resolve(process.cwd(), "public", "favicon-v2.png");
       if (fs.existsSync(fallbackPath)) {
         res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         res.sendFile(fallbackPath);
       } else {
         res.redirect(302, DEFAULT_SHARE_IMAGE);
@@ -890,9 +1298,7 @@ export function createExpressApp() {
 
   // SEO Routes for Google Search Console, Google News, and Web Crawlers
   app.get("/robots.txt", (req, res) => {
-    const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
-    const protocol = req.headers["x-forwarded-proto"] || (req.headers["x-forwarded-ssl"] === "on" ? "https" : "http");
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getBaseUrl(req);
     const text = generateRobotsTxt(baseUrl);
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.status(200).send(text);
@@ -900,9 +1306,7 @@ export function createExpressApp() {
 
   app.get("/sitemap.xml", async (req, res) => {
     try {
-      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
-      const protocol = req.headers["x-forwarded-proto"] || (req.headers["x-forwarded-ssl"] === "on" ? "https" : "http");
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = getBaseUrl(req);
       const xml = await generateSitemapXml(baseUrl);
       res.setHeader("Content-Type", "application/xml; charset=utf-8");
       res.status(200).send(xml);
@@ -914,9 +1318,7 @@ export function createExpressApp() {
 
   app.get(["/rss.xml", "/feed.xml", "/rss"], async (req, res) => {
     try {
-      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
-      const protocol = req.headers["x-forwarded-proto"] || (req.headers["x-forwarded-ssl"] === "on" ? "https" : "http");
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = getBaseUrl(req);
       const xml = await generateRssFeedXml(baseUrl);
       res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
       res.status(200).send(xml);
@@ -926,17 +1328,35 @@ export function createExpressApp() {
     }
   });
 
-  // Intercept /article/:slug for dynamic Open Graph & SEO meta tags
+  // Intercept /article/:slug for dynamic Open Graph & SEO meta tags and 301 redirects
   app.get(["/article/:slug", "/article/:slug/*"], async (req, res) => {
     try {
       const slug = req.params.slug;
-      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
-      const protocol = req.headers["x-forwarded-proto"] || (req.headers["x-forwarded-ssl"] === "on" ? "https" : "http");
-      const baseUrl = `${protocol}://${host}`;
-      const fullUrl = `${baseUrl}/article/${slug}`;
+      const baseUrl = getBaseUrl(req);
 
+      const rawClean = slug.trim().split('?')[0].split('#')[0].replace(/\.jpg$/i, "");
+      let decodedSlug = rawClean;
+      try {
+        decodedSlug = decodeURIComponent(rawClean);
+      } catch {}
+
+      // 1. Permanent 301 redirect for known broken or legacy slugs
+      if (LEGACY_SLUG_REDIRECTS[rawClean] || LEGACY_SLUG_REDIRECTS[decodedSlug]) {
+        const targetClean = LEGACY_SLUG_REDIRECTS[rawClean] || LEGACY_SLUG_REDIRECTS[decodedSlug];
+        return res.redirect(301, `/article/${encodeURIComponent(targetClean)}`);
+      }
+
+      // 2. Fetch the article
       const article = await getArticleBySlug(slug);
 
+      // 3. Permanent 301 redirect ONLY if user requested an invalid duplicate-chain slug (e.g. -a123-a123) and article has a clean slug
+      if (article && article.slug && article.slug !== rawClean && article.slug !== decodedSlug) {
+        if (rawClean.match(/-a\d{6,}-a\d{6,}/i) || LEGACY_SLUG_REDIRECTS[rawClean] || LEGACY_SLUG_REDIRECTS[decodedSlug]) {
+          return res.redirect(301, `/article/${encodeURIComponent(article.slug)}`);
+        }
+      }
+
+      const fullUrl = `${baseUrl}/article/${slug}`;
       const htmlTemplate = getHtmlTemplate();
       const finalHtml = article
         ? injectArticleMetaTags(htmlTemplate, article, fullUrl, baseUrl, slug)
@@ -948,9 +1368,7 @@ export function createExpressApp() {
     } catch (err) {
       console.error("Error serving article SSR meta tags:", err);
       const rawHtml = getHtmlTemplate();
-      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
-      const protocol = req.headers["x-forwarded-proto"] || "https";
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = getBaseUrl(req);
       const fallbackHtml = injectDefaultMetaTags(rawHtml, `${baseUrl}${req.path}`, baseUrl);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.status(200).send(fallbackHtml);

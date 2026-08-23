@@ -102,7 +102,7 @@ export function AdminAds() {
               <Input 
                 value={form.googleAdsenseId}
                 onChange={e => setForm(prev => ({ ...prev, googleAdsenseId: e.target.value }))}
-                placeholder="pub-1234567890123456" 
+                placeholder="ca-pub-XXXXXXXXXXXXXXXX" 
               />
             </div>
           </CardContent>

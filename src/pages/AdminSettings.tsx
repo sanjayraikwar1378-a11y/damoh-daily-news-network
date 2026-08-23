@@ -131,12 +131,50 @@ export function AdminSettings() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-zinc-500">Logo Image URL</label>
-                <Input name="logoUrl" value={form.logoUrl} onChange={handleChange} placeholder="https://..." />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold uppercase text-zinc-500">Logo Image URL</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setForm(f => ({ ...f, logoUrl: '/logo.png' }))}
+                    className="text-[11px] text-red-600 dark:text-red-400 hover:underline font-medium"
+                  >
+                    Use Official Logo
+                  </button>
+                </div>
+                <Input name="logoUrl" value={form.logoUrl} onChange={handleChange} placeholder="/logo.png or https://..." />
+                <div className="p-3 bg-zinc-900 rounded-lg flex items-center justify-center border border-zinc-800">
+                  <img 
+                    src={form.logoUrl || '/logo.png'} 
+                    alt="Logo Preview" 
+                    className="h-10 w-auto object-contain max-h-12" 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/logo.png';
+                    }}
+                  />
+                </div>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-zinc-500">Favicon Image URL</label>
-                <Input name="faviconUrl" value={form.faviconUrl} onChange={handleChange} placeholder="https://..." />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold uppercase text-zinc-500">Favicon Image URL</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setForm(f => ({ ...f, faviconUrl: '/favicon-v2.png' }))}
+                    className="text-[11px] text-red-600 dark:text-red-400 hover:underline font-medium"
+                  >
+                    Use Official Favicon
+                  </button>
+                </div>
+                <Input name="faviconUrl" value={form.faviconUrl} onChange={handleChange} placeholder="/favicon-v2.png or https://..." />
+                <div className="p-3 bg-zinc-900 rounded-lg flex items-center justify-center border border-zinc-800">
+                  <img 
+                    src={form.faviconUrl || '/favicon-v2.png'} 
+                    alt="Favicon Preview" 
+                    className="h-8 w-8 object-contain" 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/favicon-v2.png';
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </CardContent>
@@ -341,24 +379,21 @@ export function AdminSettings() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg font-bold flex items-center gap-2">
-              <Phone className="h-5 w-5 text-blue-600" /> Contact Information
+              <Mail className="h-5 w-5 text-blue-600" /> Official Editorial Contact
             </CardTitle>
+            <CardDescription className="text-xs text-zinc-500">
+              Configure public-facing editorial email and newsroom physical address.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-zinc-500">Contact Email</label>
-                <Input name="contactEmail" value={form.contactEmail} onChange={handleChange} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-zinc-500">Contact Phone Number</label>
-                <Input name="contactPhone" value={form.contactPhone} onChange={handleChange} />
-              </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-zinc-500">Editorial Contact Email</label>
+              <Input name="contactEmail" value={form.contactEmail} onChange={handleChange} placeholder="damohdailynewsnetwork@gmail.com" />
             </div>
 
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase text-zinc-500">Office Address</label>
-              <textarea name="contactAddress" value={form.contactAddress} onChange={handleChange} rows={2} className="w-full p-2 border rounded-md text-sm bg-background" />
+              <textarea name="contactAddress" value={form.contactAddress} onChange={handleChange} rows={2} className="w-full p-2 border rounded-md text-sm bg-background" placeholder="दमोह (मध्य प्रदेश) - 470661" />
             </div>
           </CardContent>
         </Card>
@@ -367,8 +402,11 @@ export function AdminSettings() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg font-bold flex items-center gap-2">
-              <Share2 className="h-5 w-5 text-green-600" /> Social Links & WhatsApp Hotline
+              <Share2 className="h-5 w-5 text-green-600" /> Social Media Channels
             </CardTitle>
+            <CardDescription className="text-xs text-zinc-500">
+              Official handles for news distribution and reader engagement.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -388,20 +426,14 @@ export function AdminSettings() {
                 <Input name="youtubeUrl" value={form.youtubeUrl || ''} onChange={handleChange} />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-zinc-500">WhatsApp News Tip Hotline</label>
-                <Input name="whatsappNumber" value={form.whatsappNumber || ''} onChange={handleChange} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase text-zinc-500">Instagram Profile URL</label>
                 <Input name="instagramUrl" value={form.instagramUrl || ''} onChange={handleChange} placeholder="https://instagram.com/..." />
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase text-zinc-500">Telegram Channel URL</label>
-                <Input name="telegramUrl" value={form.telegramUrl || ''} onChange={handleChange} placeholder="https://t.me/..." />
-              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase text-zinc-500">Telegram Channel URL</label>
+              <Input name="telegramUrl" value={form.telegramUrl || ''} onChange={handleChange} placeholder="https://t.me/..." />
             </div>
           </CardContent>
         </Card>

@@ -127,12 +127,12 @@ export function AdminSEO() {
   "@type": "NewsMediaOrganization",
   "name": form.siteName,
   "url": window.location.origin,
-  "logo": `${window.location.origin}/logo.png`,
+  "logo": `${window.location.origin}/icon-512.png`,
   "sameAs": [
     siteSettings.facebookUrl,
     siteSettings.twitterUrl,
     siteSettings.youtubeUrl
-  ]
+  ].filter(Boolean)
 }, null, 2)}
             </pre>
           </CardContent>

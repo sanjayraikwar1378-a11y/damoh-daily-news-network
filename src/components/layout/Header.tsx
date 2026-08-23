@@ -1,10 +1,11 @@
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { Search, Menu, Sun, Moon, MapPin, ChevronDown, Bookmark, X, Home as HomeIcon, Shield, Sparkles, ExternalLink, Flame, Newspaper, PhoneCall, Clock, Mail, MessageSquare, Phone, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useNews } from "@/context/NewsContext"
 import { useWeather } from "@/context/WeatherContext"
 import { SearchBar } from "@/components/SearchBar"
+import { BreakingNewsTicker } from "@/components/BreakingNewsTicker"
 import { motion, AnimatePresence } from "motion/react"
 
 export function Header() {
@@ -84,8 +85,8 @@ export function Header() {
     }
   }
   
-  const visibleCategories = categories.slice(0, 8)
-  const moreCategories = categories.slice(8)
+  const visibleCategories = useMemo(() => categories.slice(0, 6), [categories])
+  const moreCategories = useMemo(() => categories.slice(6), [categories])
 
   return (
     <>
@@ -96,14 +97,22 @@ export function Header() {
           <div className="container mx-auto px-4 max-w-7xl">
             <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">ADVERTISEMENT</span>
             <a href={adSettings.headerAd.linkUrl || '#'} target="_blank" rel="noopener noreferrer">
-              <img src={adSettings.headerAd.imageUrl || undefined} alt="Header Sponsor" className="mx-auto rounded max-h-16 object-cover" />
+              <img 
+                src={adSettings.headerAd.imageUrl || undefined} 
+                alt="Header Sponsor" 
+                loading="lazy"
+                decoding="async"
+                width={728}
+                height={90}
+                className="mx-auto rounded max-h-16 object-cover" 
+              />
             </a>
           </div>
         </div>
       )}
 
       {/* Top Ticker Bar */}
-      <div className="bg-zinc-900 text-zinc-200 text-xs py-1.5 border-b border-zinc-800">
+      <div className="bg-zinc-900 text-zinc-200 text-xs py-1 border-b border-zinc-800">
         <div className="container mx-auto px-3 sm:px-4 flex justify-between items-center max-w-7xl">
           <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto whitespace-nowrap scrollbar-none py-0.5 max-w-full">
             {weather ? (
@@ -145,116 +154,126 @@ export function Header() {
               <span>बुकमार्क ({bookmarks.length})</span>
             </Link>
             <span className="text-zinc-700">|</span>
-            <Link to="/admin" className="hover:text-white transition-colors font-bold bg-red-600 hover:bg-red-700 px-2.5 py-0.5 rounded text-white text-[11px]">
+            <Link to="/send-news-tip" className="flex items-center gap-1 text-amber-400 hover:text-amber-300 transition-colors font-bold text-xs">
+              <MessageSquare className="h-3.5 w-3.5 text-amber-400" />
+              <span>समाचार टिप (Send Tip)</span>
+            </Link>
+            <span className="text-zinc-700">|</span>
+            <Link to="/admin" className="hover:text-white transition-colors font-bold bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded text-white text-[11px]">
               Admin CMS
             </Link>
           </div>
         </div>
       </div>
       
-      {/* Main Header Bar */}
-      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-13 sm:h-16 flex items-center justify-between relative">
-        <div className="flex items-center gap-1 sm:gap-3 min-w-0">
+      {/* Main Header Bar - Aligned to Left */}
+      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-14 sm:h-16 md:h-[68px] lg:h-[74px] flex items-center justify-between relative gap-2 sm:gap-4">
+        {/* Left Section: Mobile Hamburger + Brand Logo + Desktop Nav */}
+        <div className="flex items-center gap-2 sm:gap-3 lg:gap-5 min-w-0 flex-1 justify-start">
           {/* Hamburger Menu Toggle button with touch target */}
           <button 
             type="button"
-            className="lg:hidden min-h-[38px] min-w-[38px] h-9 w-9 sm:h-11 sm:w-11 flex items-center justify-center rounded-lg text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0" 
+            className="lg:hidden min-h-[38px] min-w-[38px] h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0" 
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open Navigation Drawer"
           >
             <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
           </button>
 
-          {/* Full Responsive Brand Logo */}
-          <Link to="/" className="flex items-center gap-2 group min-w-0 py-0.5 sm:py-1">
-            {siteSettings.logoUrl && siteSettings.logoUrl.trim() ? (
-              <img src={siteSettings.logoUrl} alt={siteSettings.siteName || "Logo"} className="h-8 sm:h-10 object-contain" />
-            ) : (
-              <div className="flex flex-col justify-center leading-none min-w-0 select-none">
-                <div className="flex items-center gap-1">
-                  <span className="text-base xs:text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-red-600 group-hover:text-red-700 transition-colors">
-                    DAMOH
-                  </span>
-                  <span className="text-base xs:text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-zinc-900 dark:text-white">
-                    DAILY
-                  </span>
-                </div>
-                <span className="text-[7px] xs:text-[9px] sm:text-[10px] md:text-[11px] font-extrabold tracking-[0.12em] xs:tracking-[0.18em] sm:tracking-[0.25em] text-red-600 dark:text-red-500 uppercase mt-0.5 whitespace-nowrap">
-                  NEWS NETWORK
-                </span>
-              </div>
-            )}
-          </Link>
-        </div>
-        
-        {/* Desktop Category Nav */}
-        <nav className="hidden lg:flex items-center gap-1 relative">
-          <Link
-            to="/latest-news"
-            className={`px-3 py-2 rounded-md text-xs font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-              location.pathname === "/latest-news" 
-                ? "text-white bg-red-600 shadow-sm" 
-                : "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white"
-            }`}
-          >
-            <Flame className="h-3.5 w-3.5 fill-current" />
-            <span>लेटेस्ट न्यूज़</span>
+          {/* Full Responsive Brand Logo - Clean Left-Aligned, Preserved Natural Aspect Ratio */}
+          <Link to="/" className="flex items-center group min-w-0 shrink-0 py-0.5">
+            <img 
+              src={siteSettings.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.png"} 
+              alt={siteSettings.siteName || "Damoh Daily News Network"} 
+              width={360}
+              height={70}
+              loading="eager"
+              // @ts-ignore fetchPriority
+              fetchPriority="high"
+              decoding="async"
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                if (target.src !== `${window.location.origin}/logo.png` && !target.src.endsWith('/logo.png')) {
+                  target.src = '/logo.png';
+                }
+              }}
+              style={{ aspectRatio: '360 / 70' }}
+              className="h-10 xs:h-11 sm:h-13 md:h-[54px] lg:h-[60px] xl:h-[64px] w-auto max-w-[200px] xs:max-w-[230px] sm:max-w-[280px] md:max-w-[320px] lg:max-w-[360px] object-contain object-left transition-transform group-hover:scale-[1.02] drop-shadow-sm" 
+            />
           </Link>
 
-          {visibleCategories.map(category => (
+          {/* Desktop Category Nav - Flowing directly after Logo */}
+          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1.5 relative shrink-0 ml-1 xl:ml-3">
             <Link
-              key={category.id}
-              to={`/category/${category.slug}`}
-              className={`px-3 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 whitespace-nowrap ${
-                location.pathname === `/category/${category.slug}` ? "text-red-600 bg-red-50 dark:bg-red-950/50" : "text-zinc-700 dark:text-zinc-300"
+              to="/latest-news"
+              className={`px-2.5 xl:px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                location.pathname === "/latest-news" 
+                  ? "text-white bg-red-600 shadow-sm" 
+                  : "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white"
               }`}
             >
-              {category.name.split(' ')[0]}
+              <Flame className="h-3.5 w-3.5 fill-current" />
+              <span>लेटेस्ट न्यूज़</span>
             </Link>
-          ))}
 
-          {moreCategories.length > 0 && (
-            <div 
-              className="relative" 
-              onMouseEnter={() => setShowMoreMenu(true)}
-              onMouseLeave={() => setShowMoreMenu(false)}
-            >
-              <button className="px-3 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 flex items-center gap-1 text-zinc-700 dark:text-zinc-300">
-                More <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-              
-              {showMoreMenu && (
-                <div className="absolute top-full right-0 w-52 py-2 bg-background border rounded-lg shadow-xl z-50 flex flex-col max-h-[60vh] overflow-y-auto">
-                  {moreCategories.map(category => (
-                    <Link
-                      key={category.id}
-                      to={`/category/${category.slug}`}
-                      onClick={() => setShowMoreMenu(false)}
-                      className="px-4 py-2 text-xs font-semibold hover:bg-red-50 hover:text-red-600 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                      {category.name}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </nav>
+            {visibleCategories.map(category => (
+              <Link
+                key={category.id}
+                to={`/category/${category.slug}`}
+                className={`px-2 xl:px-2.5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 whitespace-nowrap ${
+                  location.pathname === `/category/${category.slug}` ? "text-red-600 bg-red-50 dark:bg-red-950/50" : "text-zinc-700 dark:text-zinc-300"
+                }`}
+              >
+                {category.name.split(' ')[0]}
+              </Link>
+            ))}
+
+            {moreCategories.length > 0 && (
+              <div 
+                className="relative" 
+                onMouseEnter={() => setShowMoreMenu(true)}
+                onMouseLeave={() => setShowMoreMenu(false)}
+              >
+                <button className="px-2 xl:px-2.5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 flex items-center gap-1 text-zinc-700 dark:text-zinc-300">
+                  More <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                
+                {showMoreMenu && (
+                  <div className="absolute top-full right-0 w-52 py-2 bg-background border rounded-lg shadow-xl z-50 flex flex-col max-h-[60vh] overflow-y-auto">
+                    {moreCategories.map(category => (
+                      <Link
+                        key={category.id}
+                        to={`/category/${category.slug}`}
+                        onClick={() => setShowMoreMenu(false)}
+                        className="px-4 py-2 text-xs font-semibold hover:bg-red-50 hover:text-red-600 dark:hover:bg-zinc-800 transition-colors"
+                      >
+                        {category.name}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </nav>
+        </div>
         
-        {/* Right Tools */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* Right Tools: Search & Theme Toggle */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto">
           <SearchBar />
           <Button 
             variant="ghost" 
             size="icon" 
             onClick={toggleDarkMode} 
-            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white h-10 w-10 shrink-0"
+            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white h-9 w-9 sm:h-10 sm:w-10 shrink-0"
             aria-label="Toggle Theme"
           >
             {isDark ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5" />}
           </Button>
         </div>
       </div>
+
+      {/* Breaking News Ticker - Stays sticky alongside Header */}
+      <BreakingNewsTicker />
     </header>
 
     {/* Motion Slide-out Mobile Navigation Drawer - Placed outside <header> to avoid backdrop-filter CSS containing block restrictions */}
@@ -281,16 +300,25 @@ export function Header() {
           >
             
             {/* Drawer Top Header */}
-            <div className="p-4 border-b border-border bg-zinc-900 text-white flex items-center justify-between shrink-0">
-              <div className="flex flex-col justify-center leading-none">
-                <div className="flex items-center gap-1">
-                  <span className="text-xl font-black tracking-tight text-red-500">DAMOH</span>
-                  <span className="text-xl font-black tracking-tight text-white">DAILY</span>
-                </div>
-                <span className="text-[9px] font-extrabold tracking-[0.18em] text-red-400 uppercase mt-0.5 whitespace-nowrap">
-                  NEWS NETWORK
-                </span>
-              </div>
+            <div className="p-3.5 border-b border-border bg-zinc-900 text-white flex items-center justify-between shrink-0">
+              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-w-0 py-0.5">
+                <img 
+                  src={siteSettings.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.png"} 
+                  alt={siteSettings.siteName || "Damoh Daily News Network"} 
+                  width={220}
+                  height={44}
+                  loading="lazy"
+                  decoding="async"
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    if (target.src !== `${window.location.origin}/logo.png` && !target.src.endsWith('/logo.png')) {
+                      target.src = '/logo.png';
+                    }
+                  }}
+                  style={{ aspectRatio: '220 / 44' }}
+                  className="h-10 xs:h-11 w-auto max-w-[200px] xs:max-w-[220px] object-contain" 
+                />
+              </Link>
 
               <button 
                 type="button"
@@ -439,33 +467,22 @@ export function Header() {
                 </div>
 
                 <div className="p-3 bg-red-50/50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30 rounded-xl space-y-2 text-xs">
-                  {siteSettings.contactPhone && (
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-                        <Phone className="h-3.5 w-3.5 text-red-500" />
-                        <span>फोन:</span>
-                      </span>
-                      <strong className="text-zinc-900 dark:text-white font-bold">{siteSettings.contactPhone}</strong>
-                    </div>
-                  )}
-                  {siteSettings.whatsappNumber && (
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-                        <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />
-                        <span>व्हाट्सएप:</span>
-                      </span>
-                      <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{siteSettings.whatsappNumber}</strong>
-                    </div>
-                  )}
-                  {siteSettings.contactEmail && (
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-                        <Mail className="h-3.5 w-3.5 text-blue-500" />
-                        <span>ईमेल:</span>
-                      </span>
-                      <span className="text-zinc-800 dark:text-zinc-200 font-medium truncate max-w-[150px]">{siteSettings.contactEmail}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
+                      <Mail className="h-3.5 w-3.5 text-blue-500" />
+                      <span>ईमेल:</span>
+                    </span>
+                    <a href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} className="text-zinc-800 dark:text-zinc-200 font-medium truncate max-w-[180px] hover:underline">
+                      {siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}
+                    </a>
+                  </div>
+                  <Link 
+                    to="/contact" 
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="w-full py-1.5 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-center block text-[11px] transition-colors"
+                  >
+                    समाचार टिप या संदेश भेजें &rarr;
+                  </Link>
                 </div>
 
                 <div className="flex justify-between items-center px-1 pt-1">

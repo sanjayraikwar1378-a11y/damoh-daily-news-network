@@ -240,15 +240,30 @@ export function getOptimizedImageUrl(
 
   // Unsplash Optimization (WebP + Auto format)
   if (url.includes('images.unsplash.com')) {
-    const cropParam = opts?.crop === 'fill' || !opts?.crop ? 'fit=crop' : 'fit=max';
-    let opt = url.includes('?') ? `${url}&auto=format&${cropParam}&q=80` : `${url}?auto=format&${cropParam}&q=80`;
-    if (opts?.width && !url.includes('w=')) {
-      opt += `&w=${opts.width}`;
+    try {
+      const urlObj = new URL(url.startsWith('//') ? `https:${url}` : url);
+      const isFill = opts?.crop === 'fill';
+      urlObj.searchParams.set('auto', 'format');
+      urlObj.searchParams.set('q', '80');
+      urlObj.searchParams.set('fm', 'webp');
+
+      if (isFill) {
+        urlObj.searchParams.set('fit', 'crop');
+        if (opts?.width) urlObj.searchParams.set('w', String(opts.width));
+        if (opts?.height) {
+          urlObj.searchParams.set('h', String(opts.height));
+        }
+      } else {
+        // Natural aspect ratio (limit/max mode): remove conflicting fixed heights so natural aspect ratio is preserved
+        urlObj.searchParams.set('fit', 'max');
+        urlObj.searchParams.delete('h');
+        if (opts?.width) urlObj.searchParams.set('w', String(opts.width));
+      }
+      return urlObj.toString();
+    } catch {
+      const cropParam = opts?.crop === 'fill' ? 'fit=crop' : 'fit=max';
+      return `${url.split('?')[0]}?auto=format&${cropParam}&q=80&w=${opts?.width || 800}&fm=webp`;
     }
-    if (!url.includes('fm=')) {
-      opt += `&fm=webp`;
-    }
-    return opt;
   }
 
   return url;
@@ -260,11 +275,33 @@ export function getOptimizedImageUrl(
  */
 export function getOptimizedSrcSet(
   url?: string,
-  widths: number[] = [360, 480, 720, 1080],
+  widths: number[] = [320, 480, 720, 1080],
   crop: string = 'limit'
 ): string {
   if (!url || typeof url !== 'string') return '';
+  if (url.startsWith('data:') || url.startsWith('blob:') || url.endsWith('.svg') || url.includes('.svg?')) {
+    return '';
+  }
   return widths
     .map(w => `${getOptimizedImageUrl(url, { width: w, crop })} ${w}w`)
     .join(', ');
+}
+
+/**
+ * Generates a micro low-resolution image URL (LQIP) for instant blur-up placeholders
+ * with virtually zero payload overhead (~300 bytes).
+ */
+export function getLowResPlaceholderUrl(url?: string): string {
+  if (!url || typeof url !== 'string') return '';
+
+  if (url.includes('res.cloudinary.com')) {
+    return optimizeCloudinaryUrl(url, { width: 28, crop: 'fill' });
+  }
+
+  if (url.includes('images.unsplash.com')) {
+    const base = url.split('?')[0];
+    return `${base}?auto=format&fit=crop&w=28&q=20&blur=30&fm=webp`;
+  }
+
+  return '';
 }

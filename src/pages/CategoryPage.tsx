@@ -17,6 +17,29 @@ export function CategoryPage() {
   
   const category = useMemo(() => categories.find(c => c.slug === slug), [categories, slug])
 
+  // SEO effect for title, meta tags, and canonical URL
+  useEffect(() => {
+    if (category) {
+      document.title = `${category.name} | दमोह Daily News`
+      let metaDesc = document.querySelector('meta[name="description"]')
+      if (!metaDesc) {
+        metaDesc = document.createElement('meta')
+        metaDesc.setAttribute('name', 'description')
+        document.head.appendChild(metaDesc)
+      }
+      metaDesc.setAttribute('content', `${category.name} की सभी ताज़ा और बड़ी ख़बरें - Damoh Daily News Network.`)
+
+      const fullUrl = `${window.location.origin}/category/${slug}`
+      let canonicalEl = document.querySelector('link[rel="canonical"]')
+      if (!canonicalEl) {
+        canonicalEl = document.createElement('link')
+        canonicalEl.setAttribute('rel', 'canonical')
+        document.head.appendChild(canonicalEl)
+      }
+      canonicalEl.setAttribute('href', fullUrl)
+    }
+  }, [category, slug])
+
   // Fetch complete category articles on demand
   useEffect(() => {
     if (category?.id) {
@@ -117,14 +140,18 @@ export function CategoryPage() {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {visibleArticles.map(article => (
+            {visibleArticles.map((article, idx) => (
               <Link to={`/article/${article.slug}`} key={article.id} className="group flex flex-col gap-3">
                 <div className="relative aspect-video rounded-xl overflow-hidden shadow-sm bg-zinc-100 dark:bg-zinc-800">
                   <ResponsiveImage 
                     src={article.imageUrl} 
                     alt={article.title}
                     type="card"
-                    loading="lazy"
+                    loading={idx < 2 ? "eager" : "lazy"}
+                    fetchPriority={idx === 0 ? "high" : "auto"}
+                    width={480}
+                    height={270}
+                    aspectRatio="16/9"
                     defaultWidth={480}
                     className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
                   />

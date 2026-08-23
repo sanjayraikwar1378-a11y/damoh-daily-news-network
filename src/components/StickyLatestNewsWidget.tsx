@@ -140,6 +140,9 @@ export function StickyLatestNewsWidget({
                     alt={article.title}
                     type="card"
                     loading="lazy"
+                    width={160}
+                    height={128}
+                    aspectRatio="5/4"
                     defaultWidth={160}
                     className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
                   />

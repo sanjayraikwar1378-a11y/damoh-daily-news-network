@@ -31,8 +31,11 @@ export function AuthorByline({
         <img 
           src={optimizedAvatar} 
           alt={reporter.name} 
+          width={48}
+          height={48}
           loading="lazy"
           decoding="async"
+          style={{ aspectRatio: '1/1' }}
           className="w-12 h-12 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 shrink-0 mt-0.5" 
         />
         <div className="flex flex-col justify-center">
@@ -73,6 +76,11 @@ export function AuthorByline({
         <img 
           src={optimizedAvatar} 
           alt={reporter.name} 
+          width={80}
+          height={80}
+          loading="lazy"
+          decoding="async"
+          style={{ aspectRatio: '1/1' }}
           className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-red-600 dark:border-red-500 shrink-0 bg-zinc-100 dark:bg-zinc-800 shadow-sm" 
         />
         <div className="space-y-1.5 flex-1 min-w-0">

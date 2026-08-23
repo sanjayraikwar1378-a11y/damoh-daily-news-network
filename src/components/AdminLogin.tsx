@@ -18,7 +18,7 @@ interface AdminLoginProps {
 }
 
 export function AdminLogin({ initialError }: AdminLoginProps = {}) {
-  const [email, setEmail] = useState("admin@damohdaily.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(initialError || null);
@@ -98,14 +98,16 @@ export function AdminLogin({ initialError }: AdminLoginProps = {}) {
       <div className="w-full max-w-md space-y-6">
         
         {/* Header Branding */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-red-600/20 border border-red-500/30 text-red-500 mb-2 shadow-lg shadow-red-900/20">
-            <Shield className="h-7 w-7" />
-          </div>
-          <h1 className="text-2xl font-black tracking-tight flex items-center justify-center gap-1.5">
-            <span className="text-red-500">DAMOH</span>
-            <span className="text-white">DAILY</span>
-          </h1>
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <img 
+            src="/logo.png" 
+            alt="Damoh Daily News Network" 
+            onError={(e) => {
+              const target = e.currentTarget as HTMLImageElement;
+              if (!target.src.endsWith('/logo.png')) target.src = '/logo.png';
+            }}
+            className="h-16 sm:h-20 w-auto max-w-[260px] object-contain mb-1 drop-shadow-md" 
+          />
           <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">
             Firebase Security &amp; CMS Admin Portal
           </p>
@@ -152,7 +154,7 @@ export function AdminLogin({ initialError }: AdminLoginProps = {}) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="admin@damohdaily.com"
+                    placeholder="Enter your admin email"
                     className="pl-9 bg-zinc-950 border-zinc-800 text-white focus:border-red-500 font-medium text-xs"
                   />
                 </div>

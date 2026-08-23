@@ -1,36 +1,56 @@
 import { Outlet, Link } from "react-router-dom"
+import { useState, useEffect } from "react"
 import { Header } from "./Header"
-import { BreakingNewsTicker } from "../BreakingNewsTicker"
 import { useNews } from "@/context/NewsContext"
 import { Mail, Phone, MapPin, MessageSquare, Facebook, Twitter, Instagram, Youtube, Send } from "lucide-react"
+import { SendNewsTipModal } from "@/components/SendNewsTipModal"
 
 export function MainLayout() {
   const { categories, siteSettings } = useNews()
+  const [isTipModalOpen, setIsTipModalOpen] = useState(false)
+
+  useEffect(() => {
+    const handleOpenModal = () => setIsTipModalOpen(true)
+    window.addEventListener("open-news-tip-modal", handleOpenModal)
+    return () => {
+      window.removeEventListener("open-news-tip-modal", handleOpenModal)
+    }
+  }, [])
   
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col font-sans text-zinc-900 dark:text-zinc-50">
       <Header />
-      <BreakingNewsTicker />
       <main className="flex-1">
         <Outlet />
       </main>
+
+      {/* Global News Tip Modal */}
+      <SendNewsTipModal 
+        isOpen={isTipModalOpen} 
+        onClose={() => setIsTipModalOpen(false)} 
+      />
       
       <footer className="bg-zinc-950 text-zinc-400 py-10 md:py-12 border-t border-zinc-800 mt-auto">
         <div className="container mx-auto px-4 max-w-7xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
           <div className="space-y-3">
-            <div className="flex flex-col leading-none">
-              <div className="flex items-center gap-1">
-                <span className="text-2xl font-black tracking-tighter text-red-600">
-                  {siteSettings.siteName ? siteSettings.siteName.split(' ')[0] : 'DAMOH'}
-                </span>
-                <span className="text-2xl font-black tracking-tighter text-white">
-                  {siteSettings.siteName ? siteSettings.siteName.split(' ').slice(1, 2).join(' ') : 'DAILY'}
-                </span>
-              </div>
-              <span className="text-[10px] font-extrabold tracking-[0.25em] text-red-500 uppercase mt-1">
-                NEWS NETWORK
-              </span>
-            </div>
+            <Link to="/" className="inline-block">
+              <img 
+                src={siteSettings.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.png"} 
+                alt={siteSettings.siteName || "Damoh Daily News Network"} 
+                width={280}
+                height={64}
+                loading="lazy"
+                decoding="async"
+                onError={(e) => {
+                  const target = e.currentTarget as HTMLImageElement;
+                  if (target.src !== `${window.location.origin}/logo.png` && !target.src.endsWith('/logo.png')) {
+                    target.src = '/logo.png';
+                  }
+                }}
+                style={{ aspectRatio: '280 / 64' }}
+                className="h-12 sm:h-14 md:h-16 w-auto max-w-[240px] sm:max-w-[280px] object-contain" 
+              />
+            </Link>
             <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed pt-1">
               {siteSettings.tagline || 'दमोह जिले का सबसे विश्वसनीय डिजिटल न्यूज़ प्लेटफॉर्म। सटीक और तेज़ खबरें, सबसे पहले।'}
             </p>
@@ -71,30 +91,23 @@ export function MainLayout() {
               <Link to="/contact" className="text-xs font-normal text-red-500 hover:underline">विस्तार देखें &rarr;</Link>
             </h4>
             <div className="text-xs sm:text-sm space-y-2.5 text-zinc-300">
-              {siteSettings.contactPhone && (
-                <p className="flex items-center gap-2">
-                  <Phone className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                  <span>फोन: <strong className="text-white">{siteSettings.contactPhone}</strong></span>
-                </p>
-              )}
-              {siteSettings.whatsappNumber && (
-                <p className="flex items-center gap-2">
-                  <MessageSquare className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                  <span>व्हाट्सएप: <strong className="text-emerald-400">{siteSettings.whatsappNumber}</strong></span>
-                </p>
-              )}
-              {siteSettings.contactEmail && (
-                <p className="flex items-center gap-2">
-                  <Mail className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                  <span>ईमेल: <a href={`mailto:${siteSettings.contactEmail}`} className="hover:underline text-white">{siteSettings.contactEmail}</a></span>
-                </p>
-              )}
-              {siteSettings.contactAddress && (
-                <p className="flex items-start gap-2 pt-1 text-xs text-zinc-400">
-                  <MapPin className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
-                  <span>{siteSettings.contactAddress}</span>
-                </p>
-              )}
+              <p className="flex items-center gap-2">
+                <Mail className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                <span>ईमेल: <a href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} className="hover:underline text-white font-medium">{siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}</a></span>
+              </p>
+              <p className="flex items-start gap-2 pt-1 text-xs text-zinc-400">
+                <MapPin className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                <span>{siteSettings.contactAddress || "दमोह (मध्य प्रदेश) - 470661"}</span>
+              </p>
+              <div className="pt-1">
+                <Link 
+                  to="/contact" 
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold transition-colors"
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  समाचार टिप भेजें &rarr;
+                </Link>
+              </div>
             </div>
           </div>
 

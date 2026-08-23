@@ -270,15 +270,15 @@ export const WeatherProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => clearInterval(interval)
   }, [fetchLiveWeather])
 
+  const contextValue = React.useMemo(() => ({
+    weather,
+    loading,
+    error,
+    refreshWeather: fetchLiveWeather,
+  }), [weather, loading, error, fetchLiveWeather]);
+
   return (
-    <WeatherContext.Provider
-      value={{
-        weather,
-        loading,
-        error,
-        refreshWeather: fetchLiveWeather,
-      }}
-    >
+    <WeatherContext.Provider value={contextValue}>
       {children}
     </WeatherContext.Provider>
   )

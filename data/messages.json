@@ -1,0 +1,110 @@
+[
+  {
+    "id": "msg_1787418397113_n9fbr",
+    "fullName": "Production Audit Test User",
+    "mobileNumber": "9876543210",
+    "email": "no-email-provided@damohdaily.in",
+    "message": "Production verification test news tip - road construction update in Damoh city center.",
+    "createdAt": "2026-08-22T17:06:37.113Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787418319803_yt1we",
+    "fullName": "Sanjay Raikwar",
+    "mobileNumber": "9343772242",
+    "email": "sanjayraikwar1378@gmail.com",
+    "message": "dfdsf",
+    "createdAt": "2026-08-22T17:05:19.803Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787416944536_mu6na",
+    "fullName": "Sanjay Raikwar",
+    "mobileNumber": "9343772242",
+    "email": "sanjayraikwar1378@gmail.com",
+    "message": "dfdsfsdfdsfdsf",
+    "createdAt": "2026-08-22T16:42:24.536Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787416843641_nusrh",
+    "fullName": "Sanjay Raikwar",
+    "mobileNumber": "9343772242",
+    "email": "sanjayraikwar1378@gmail.com",
+    "message": "sfsdf",
+    "createdAt": "2026-08-22T16:40:43.641Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787416715061_d141f",
+    "fullName": "Prakash Mishra",
+    "mobileNumber": "9827011223",
+    "email": "prakash@damoh.in",
+    "message": "Special report on road construction progress near Damoh bypass.",
+    "createdAt": "2026-08-22T16:38:35.061Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787416571862_sop2l",
+    "fullName": "Rahul Jain",
+    "mobileNumber": "9425123456",
+    "email": "no-email-provided@damohdaily.in",
+    "message": "Special report on Damoh water scheme",
+    "createdAt": "2026-08-22T16:36:11.862Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787416568484_5vvf5",
+    "fullName": "Arun Verma",
+    "mobileNumber": "9826123456",
+    "email": "arun@example.com",
+    "message": "Damoh clock tower renovation update news tip",
+    "createdAt": "2026-08-22T16:36:08.484Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787416521596_3igvi",
+    "fullName": "Test User",
+    "mobileNumber": "9876543210",
+    "email": "test@example.com",
+    "message": "Test news tip message",
+    "createdAt": "2026-08-22T16:35:21.596Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787416004608_kwzl8",
+    "fullName": "Sanjay Raikwar",
+    "mobileNumber": "9343772242",
+    "email": "sanjayraikwar1378@gmail.com",
+    "message": "dfzddfdsdf",
+    "createdAt": "2026-08-22T16:26:44.608Z",
+    "status": "resolved"
+  },
+  {
+    "id": "msg_1787328022675_dp2cy",
+    "fullName": "Test User",
+    "mobileNumber": "9876543210",
+    "email": "test@example.com",
+    "message": "This is a test news tip",
+    "createdAt": "2026-08-21T16:00:22.675Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787245506682_dqo8i",
+    "fullName": "Rajesh Kumar",
+    "mobileNumber": "9876543210",
+    "email": "rajesh.test@example.com",
+    "message": "This is a verified test news tip regarding local governance in Damoh.",
+    "createdAt": "2026-08-20T17:05:06.682Z",
+    "status": "new"
+  },
+  {
+    "id": "msg_1787245297541_0ayws",
+    "fullName": "रवि शर्मा",
+    "mobileNumber": "9876543210",
+    "email": "ravi@example.com",
+    "message": "दमोह में नई सड़क निर्माण से जुड़ी विशेष खबर।",
+    "createdAt": "2026-08-20T17:01:37.541Z",
+    "status": "new"
+  }
+]

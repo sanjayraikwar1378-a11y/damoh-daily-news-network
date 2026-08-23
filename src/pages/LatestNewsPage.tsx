@@ -335,7 +335,11 @@ export function LatestNewsPage() {
                         src={article.imageUrl} 
                         alt={article.title} 
                         type="card" 
-                        loading="lazy" 
+                        loading={idx < 2 ? "eager" : "lazy"} 
+                        fetchPriority={idx === 0 ? "high" : "auto"}
+                        width={480}
+                        height={270}
+                        aspectRatio="16/9"
                         defaultWidth={480}
                         className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500" 
                       />

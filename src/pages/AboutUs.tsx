@@ -10,6 +10,7 @@ import {
   CheckCircle2, 
   Scale, 
   FileCheck2, 
+  FileText,
   Users, 
   Newspaper, 
   Award, 
@@ -36,9 +37,7 @@ import {
 export function AboutUs() {
   const { siteSettings } = useNews()
   const siteName = siteSettings.siteName || "Damoh Daily News"
-  const phone = siteSettings.contactPhone || "+91 94251 56789"
-  const whatsapp = siteSettings.whatsappNumber || "+91 94251 56789"
-  const email = siteSettings.contactEmail || "editor@damohdaily.com"
+  const email = siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"
   const address = siteSettings.contactAddress || "Damoh, Madhya Pradesh - 470661, India"
 
   // Update document title for SEO & Google News compliance
@@ -362,42 +361,22 @@ export function AboutUs() {
       <section className="bg-white dark:bg-zinc-900 p-6 sm:p-10 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
         <div className="space-y-2 border-b border-zinc-200 dark:border-zinc-800 pb-4">
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-white flex items-center gap-2">
-            <Phone className="h-7 w-7 text-red-600" /> Contact Editorial Desk
+            <Mail className="h-7 w-7 text-red-600" /> Contact Editorial Desk
           </h2>
           <p className="text-zinc-600 dark:text-zinc-400 text-sm">
             Reach out to our newsroom for press releases, news tips, corrections, or general inquiries.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl space-y-2 border border-zinc-200 dark:border-zinc-700/50">
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold text-sm">
-              <Phone className="h-4 w-4" /> Editorial Phone
-            </div>
-            <p className="text-xs font-bold text-zinc-900 dark:text-white">
-              {phone}
-            </p>
-            <p className="text-[11px] text-zinc-500">Mon - Sat: 9:00 AM - 8:00 PM</p>
-          </div>
-
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl space-y-2 border border-zinc-200 dark:border-zinc-700/50">
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
-              <MessageSquare className="h-4 w-4" /> WhatsApp Helpline
-            </div>
-            <p className="text-xs font-bold text-zinc-900 dark:text-white">
-              {whatsapp}
-            </p>
-            <p className="text-[11px] text-zinc-500">Send news tips & photos directly</p>
-          </div>
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl space-y-2 border border-zinc-200 dark:border-zinc-700/50">
             <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold text-sm">
-              <Mail className="h-4 w-4" /> Official Email
+              <Mail className="h-4 w-4" /> Official Editorial Email
             </div>
             <p className="text-xs font-bold text-zinc-900 dark:text-white truncate">
-              {email}
+              {email || "damohdailynewsnetwork@gmail.com"}
             </p>
-            <p className="text-[11px] text-zinc-500">For press releases & inquiries</p>
+            <p className="text-[11px] text-zinc-500">For press releases, corrections & official correspondence</p>
           </div>
 
           <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl space-y-2 border border-zinc-200 dark:border-zinc-700/50">
@@ -407,17 +386,25 @@ export function AboutUs() {
             <p className="text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed font-medium">
               {address}
             </p>
-            <p className="text-[11px] text-zinc-500">Damoh, Madhya Pradesh, India</p>
+            <p className="text-[11px] text-zinc-500">Damoh, Madhya Pradesh, India - 470661</p>
           </div>
         </div>
 
-        <div className="pt-2 text-center sm:text-left">
-          <Link
-            to="/contact"
-            className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs inline-flex items-center gap-2 shadow-sm transition-colors"
+        <div className="pt-2 text-center sm:text-left flex flex-wrap gap-3">
+          <Link 
+            to="/contact" 
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm"
           >
-            Visit Detailed Contact Page <ExternalLink className="h-4 w-4" />
+            <FileText className="h-4 w-4" />
+            Send News Tip &amp; Message Online &rarr;
           </Link>
+          <a
+            href={`mailto:${email || "damohdailynewsnetwork@gmail.com"}`}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-800 dark:text-zinc-200 text-xs sm:text-sm font-bold rounded-xl transition-all"
+          >
+            <Mail className="h-4 w-4" />
+            Email Newsroom
+          </a>
         </div>
       </section>
     </motion.div>
