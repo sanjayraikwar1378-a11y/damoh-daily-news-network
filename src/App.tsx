@@ -44,7 +44,6 @@ const AdminAds = lazy(() => import("./pages/AdminAds").then(m => ({ default: m.A
 const AdminSEO = lazy(() => import("./pages/AdminSEO").then(m => ({ default: m.AdminSEO })))
 const AdminSettings = lazy(() => import("./pages/AdminSettings").then(m => ({ default: m.AdminSettings })))
 const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics").then(m => ({ default: m.AdminAnalytics })))
-const AdminMessages = lazy(() => import("./pages/AdminMessages").then(m => ({ default: m.AdminMessages })))
 
 function PageLoader() {
   return (
@@ -96,7 +95,6 @@ export default function App() {
                 
                 <Route path="/admin" element={<AdminLayout />}>
                   <Route index element={<AdminDashboard />} />
-                  <Route path="messages" element={<AdminMessages />} />
                   <Route path="create" element={<AdminCreateNews />} />
                   <Route path="edit/:id" element={<AdminCreateNews />} />
                   <Route path="news" element={<AdminNews />} />

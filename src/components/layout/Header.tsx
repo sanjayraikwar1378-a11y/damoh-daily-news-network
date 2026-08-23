@@ -6,6 +6,7 @@ import { useNews } from "@/context/NewsContext"
 import { useWeather } from "@/context/WeatherContext"
 import { SearchBar } from "@/components/SearchBar"
 import { BreakingNewsTicker } from "@/components/BreakingNewsTicker"
+import { LogoImage } from "@/components/LogoImage"
 import { motion, AnimatePresence } from "motion/react"
 
 export function Header() {
@@ -65,7 +66,8 @@ export function Header() {
   }, [mobileMenuOpen])
 
   const toggleDarkMode = () => {
-    const nextDark = !isDark
+    const isCurrentlyDark = document.documentElement.classList.contains('dark')
+    const nextDark = !isCurrentlyDark
     setIsDark(nextDark)
     if (nextDark) {
       document.documentElement.classList.add('dark')
@@ -173,32 +175,26 @@ export function Header() {
           {/* Hamburger Menu Toggle button with touch target */}
           <button 
             type="button"
-            className="lg:hidden min-h-[38px] min-w-[38px] h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0" 
-            onClick={() => setMobileMenuOpen(true)}
+            className="lg:hidden min-h-[38px] min-w-[38px] h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0 relative z-20" 
+            onClick={(e) => {
+              e.stopPropagation()
+              setMobileMenuOpen(true)
+            }}
             aria-label="Open Navigation Drawer"
           >
             <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
           </button>
 
-          {/* Full Responsive Brand Logo - Clean Left-Aligned, Preserved Natural Aspect Ratio */}
-          <Link to="/" className="flex items-center group min-w-0 shrink-0 py-0.5">
-            <img 
-              src={siteSettings.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.png"} 
+          {/* Full Responsive Brand Logo - Clean Left-Aligned, Proportionally Larger, Preserved Natural Aspect Ratio */}
+          <Link to="/" className="flex items-center group min-w-0 shrink py-0.5 relative z-10 max-w-[calc(100vw-140px)] sm:max-w-none">
+            <LogoImage 
+              src={siteSettings.logoUrl} 
               alt={siteSettings.siteName || "Damoh Daily News Network"} 
               width={360}
               height={70}
-              loading="eager"
-              // @ts-ignore fetchPriority
-              fetchPriority="high"
-              decoding="async"
-              onError={(e) => {
-                const target = e.currentTarget as HTMLImageElement;
-                if (target.src !== `${window.location.origin}/logo.png` && !target.src.endsWith('/logo.png')) {
-                  target.src = '/logo.png';
-                }
-              }}
+              priority={true}
               style={{ aspectRatio: '360 / 70' }}
-              className="h-10 xs:h-11 sm:h-13 md:h-[54px] lg:h-[60px] xl:h-[64px] w-auto max-w-[200px] xs:max-w-[230px] sm:max-w-[280px] md:max-w-[320px] lg:max-w-[360px] object-contain object-left transition-transform group-hover:scale-[1.02] drop-shadow-sm" 
+              className="h-[58px] xs:h-[63px] sm:h-[73px] md:h-[78px] lg:h-[88px] xl:h-[94px] w-auto max-w-[calc(100vw-140px)] xs:max-w-[340px] sm:max-w-[416px] md:max-w-[470px] lg:max-w-[520px] xl:max-w-[570px] object-contain object-left transition-transform group-hover:scale-[1.02] drop-shadow-sm" 
             />
           </Link>
 
@@ -258,13 +254,17 @@ export function Header() {
         </div>
         
         {/* Right Tools: Search & Theme Toggle */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto relative z-20">
           <SearchBar />
           <Button 
+            type="button"
             variant="ghost" 
             size="icon" 
-            onClick={toggleDarkMode} 
-            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white h-9 w-9 sm:h-10 sm:w-10 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleDarkMode()
+            }} 
+            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white h-9 w-9 sm:h-10 sm:w-10 shrink-0 relative z-20"
             aria-label="Toggle Theme"
           >
             {isDark ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5" />}
@@ -302,21 +302,14 @@ export function Header() {
             {/* Drawer Top Header */}
             <div className="p-3.5 border-b border-border bg-zinc-900 text-white flex items-center justify-between shrink-0">
               <Link to="/" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-w-0 py-0.5">
-                <img 
-                  src={siteSettings.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.png"} 
+                <LogoImage 
+                  src={siteSettings.logoUrl} 
                   alt={siteSettings.siteName || "Damoh Daily News Network"} 
                   width={220}
                   height={44}
-                  loading="lazy"
-                  decoding="async"
-                  onError={(e) => {
-                    const target = e.currentTarget as HTMLImageElement;
-                    if (target.src !== `${window.location.origin}/logo.png` && !target.src.endsWith('/logo.png')) {
-                      target.src = '/logo.png';
-                    }
-                  }}
+                  priority={false}
                   style={{ aspectRatio: '220 / 44' }}
-                  className="h-10 xs:h-11 w-auto max-w-[200px] xs:max-w-[220px] object-contain" 
+                  className="h-[52px] xs:h-[58px] w-auto max-w-[260px] xs:max-w-[285px] object-contain" 
                 />
               </Link>
 

@@ -12,12 +12,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Shield, Lock, Mail, LogIn, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useNews } from "@/context/NewsContext";
+import { LogoImage } from "@/components/LogoImage";
 
 interface AdminLoginProps {
   initialError?: string | null;
 }
 
 export function AdminLogin({ initialError }: AdminLoginProps = {}) {
+  const { siteSettings } = useNews();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -99,14 +102,11 @@ export function AdminLogin({ initialError }: AdminLoginProps = {}) {
         
         {/* Header Branding */}
         <div className="text-center space-y-2 flex flex-col items-center">
-          <img 
-            src="/logo.png" 
-            alt="Damoh Daily News Network" 
-            onError={(e) => {
-              const target = e.currentTarget as HTMLImageElement;
-              if (!target.src.endsWith('/logo.png')) target.src = '/logo.png';
-            }}
-            className="h-16 sm:h-20 w-auto max-w-[260px] object-contain mb-1 drop-shadow-md" 
+          <LogoImage 
+            src={siteSettings?.logoUrl} 
+            alt={siteSettings?.siteName || "Damoh Daily News Network"} 
+            priority={true}
+            className="h-[84px] sm:h-[104px] w-auto max-w-[340px] object-contain mb-1 drop-shadow-md" 
           />
           <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">
             Firebase Security &amp; CMS Admin Portal

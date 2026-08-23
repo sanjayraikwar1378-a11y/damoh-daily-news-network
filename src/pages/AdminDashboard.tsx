@@ -1,4 +1,4 @@
-import { Users, FileText, Eye, TrendingUp, Zap, FolderTree, MessageSquare, Plus, Edit, ExternalLink, Image, DollarSign, Settings, BarChart3, Inbox } from "lucide-react"
+import { Users, FileText, Eye, TrendingUp, Zap, FolderTree, MessageSquare, Plus, Edit, ExternalLink, Image, DollarSign, Settings, BarChart3 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
@@ -153,10 +153,6 @@ export function AdminDashboard() {
           <CardContent className="space-y-3">
             <Link to="/admin/create" className="flex items-center gap-3 p-3 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 font-bold text-sm transition-colors">
               <Plus className="h-4 w-4" /> Write New Article
-            </Link>
-
-            <Link to="/admin/messages" className="flex items-center gap-3 p-3 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-sm font-medium transition-colors">
-              <Inbox className="h-4 w-4 text-red-600" /> Messages & News Tips
             </Link>
 
             <Link to="/admin/news" className="flex items-center gap-3 p-3 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-sm font-medium transition-colors">

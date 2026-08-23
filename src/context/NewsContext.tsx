@@ -113,7 +113,20 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [adSettings, setAdSettings] = useState<AdSettings>(MOCK_ADS);
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(MOCK_SITE_SETTINGS);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
+    try {
+      const cached = localStorage.getItem('damoh_news_site_settings');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return {
+          ...MOCK_SITE_SETTINGS,
+          ...parsed,
+          logoUrl: parsed.logoUrl && parsed.logoUrl.trim() ? parsed.logoUrl : '/logo.png'
+        };
+      }
+    } catch {}
+    return MOCK_SITE_SETTINGS;
+  });
   const [marketRates, setMarketRates] = useState<MarketRates>(INITIAL_MARKET_RATES);
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [readingHistory, setReadingHistory] = useState<string[]>([]);
@@ -332,11 +345,17 @@ export function NewsProvider({ children }: { children: ReactNode }) {
 
         if (siteSnap.status === 'fulfilled' && siteSnap.value.exists()) {
           const rawSite = siteSnap.value.data() as SiteSettings;
-          setSiteSettings({
+          const updated: SiteSettings = {
+            ...MOCK_SITE_SETTINGS,
             ...rawSite,
+            logoUrl: rawSite.logoUrl && rawSite.logoUrl.trim() ? rawSite.logoUrl : '/logo.png',
             contactPhone: "",
             whatsappNumber: ""
-          });
+          };
+          setSiteSettings(updated);
+          try {
+            localStorage.setItem('damoh_news_site_settings', JSON.stringify(updated));
+          } catch {}
         }
         if (adsSnap.status === 'fulfilled' && adsSnap.value.exists()) {
           setAdSettings(adsSnap.value.data() as AdSettings);
@@ -516,11 +535,17 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     const unsubSettingsSite = onSnapshot(doc(db, "settings", "site"), (snap) => {
       if (snap.exists()) {
         const rawSite = snap.data() as SiteSettings;
-        setSiteSettings({
+        const updated: SiteSettings = {
+          ...MOCK_SITE_SETTINGS,
           ...rawSite,
+          logoUrl: rawSite.logoUrl && rawSite.logoUrl.trim() ? rawSite.logoUrl : '/logo.png',
           contactPhone: "",
           whatsappNumber: ""
-        });
+        };
+        setSiteSettings(updated);
+        try {
+          localStorage.setItem('damoh_news_site_settings', JSON.stringify(updated));
+        } catch {}
       }
     }, (err) => console.warn("Site settings listener notice:", err));
 

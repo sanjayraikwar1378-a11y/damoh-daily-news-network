@@ -817,9 +817,6 @@ export function createExpressApp() {
     res.status(200).json({ status: "ok" });
   });
 
-  // Reusable Handler for News Tips & Contact Messages (Guaranteed Persistent Delivery)
-  // Contact/news-tip message endpoints removed. Contact is now handled by direct email only.
-
   // API Route for Cloudinary Signed Uploads
   app.post("/api/cloudinary-sign", (req, res) => {
     try {

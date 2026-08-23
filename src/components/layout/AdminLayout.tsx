@@ -19,17 +19,17 @@ import {
   Shield,
   LogOut,
   Sparkles,
-  Loader2,
-  Inbox
+  Loader2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "motion/react"
 import { auth, onAuthStateChanged, signOut, deleteUser, User } from "@/lib/firebase"
 import { AdminLogin } from "@/components/AdminLogin"
 import { useNews } from "@/context/NewsContext"
+import { LogoImage } from "@/components/LogoImage"
 
 export function AdminLayout() {
-  const { loadAdminData } = useNews()
+  const { loadAdminData, siteSettings } = useNews()
   const location = useLocation()
 
   useEffect(() => {
@@ -38,6 +38,9 @@ export function AdminLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [user, setUser] = useState<User | null | undefined>(undefined) // undefined = loading
   const [authError, setAuthError] = useState<string | null>(null)
+
+  const logoSrc = siteSettings?.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.png"
+  const siteName = siteSettings?.siteName || "Damoh Daily News Network"
   
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
@@ -81,7 +84,6 @@ export function AdminLayout() {
 
   const navItems = [
     { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-    { label: "Messages & Tips", path: "/admin/messages", icon: Inbox },
     { label: "Write News", path: "/admin/create", icon: PlusCircle },
     { label: "All News Articles", path: "/admin/news", icon: FileText },
     { label: "Analytics & Traffic", path: "/admin/analytics", icon: BarChart3 },
@@ -151,14 +153,11 @@ export function AdminLayout() {
           </button>
 
           <Link to="/admin" className="flex items-center py-1">
-            <img 
-              src="/logo.png" 
-              alt="Damoh Daily News Network" 
-              onError={(e) => {
-                const target = e.currentTarget as HTMLImageElement;
-                if (!target.src.endsWith('/logo.png')) target.src = '/logo.png';
-              }}
-              className="h-8 w-auto max-w-[160px] object-contain" 
+            <LogoImage 
+              src={logoSrc} 
+              alt={siteName} 
+              priority={true}
+              className="h-[42px] w-auto max-w-[208px] object-contain" 
             />
           </Link>
         </div>
@@ -201,14 +200,11 @@ export function AdminLayout() {
             >
               <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
                 <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center">
-                  <img 
-                    src="/logo.png" 
-                    alt="Damoh Daily News Network" 
-                    onError={(e) => {
-                      const target = e.currentTarget as HTMLImageElement;
-                      if (!target.src.endsWith('/logo.png')) target.src = '/logo.png';
-                    }}
-                    className="h-8 w-auto max-w-[150px] object-contain" 
+                  <LogoImage 
+                    src={logoSrc} 
+                    alt={siteName} 
+                    priority={false}
+                    className="h-[42px] w-auto max-w-[195px] object-contain" 
                   />
                 </Link>
                 <button 
@@ -273,14 +269,11 @@ export function AdminLayout() {
       <aside className="hidden md:flex w-64 bg-zinc-900 text-zinc-300 flex-col shrink-0 min-h-screen sticky top-0 h-screen">
         <div className="p-5 border-b border-zinc-800 space-y-3">
           <Link to="/" className="flex flex-col items-center group">
-            <img 
-              src="/logo.png" 
-              alt="Damoh Daily News Network" 
-              onError={(e) => {
-                const target = e.currentTarget as HTMLImageElement;
-                if (!target.src.endsWith('/logo.png')) target.src = '/logo.png';
-              }}
-              className="h-12 w-auto max-w-[200px] object-contain transition-transform group-hover:scale-[1.02]" 
+            <LogoImage 
+              src={logoSrc} 
+              alt={siteName} 
+              priority={true}
+              className="h-[62px] w-auto max-w-[260px] object-contain transition-transform group-hover:scale-[1.02]" 
             />
             <span className="text-[9px] font-bold text-zinc-400 tracking-wider uppercase mt-2 flex items-center gap-1">
               <Shield className="h-3 w-3 text-emerald-500" /> FIREBASE CMS CONTROL
