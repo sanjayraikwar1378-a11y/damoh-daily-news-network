@@ -249,6 +249,7 @@ export async function dispatchFCMPushNotification(payload: FCMPushPayload): Prom
       const fcmV1Url = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
 
       for (const rec of uniqueRecords) {
+        const urgencyLevel = payload.priority === "urgent" || payload.priority === "breaking" ? "high" : "normal";
         const messageBody = {
           message: {
             token: rec.token,
@@ -258,7 +259,7 @@ export async function dispatchFCMPushNotification(payload: FCMPushPayload): Prom
               image: payload.imageUrl || undefined
             },
             data: {
-              id: String(payload.id || ""),
+              id: String(payload.id || `ddn_${Date.now()}`),
               title: String(formattedTitle),
               body: String(payload.body),
               url: String(targetUrl),
@@ -272,7 +273,8 @@ export async function dispatchFCMPushNotification(payload: FCMPushPayload): Prom
             },
             webpush: {
               headers: {
-                Urgency: payload.priority === "urgent" || payload.priority === "breaking" ? "high" : "normal"
+                Urgency: urgencyLevel,
+                TTL: "86400" // 24 hours delivery window for sleeping/dozing devices
               },
               notification: {
                 icon: "/icon-192-v2.png",

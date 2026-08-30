@@ -429,8 +429,26 @@ function getArticleImageUrl(article: Record<string, any> | null, slug: string, b
 function generateRobotsTxt(baseUrl: string): string {
   return `User-agent: *
 Allow: /
+Allow: /api/article-image/
+Allow: /article-image/
+Allow: /social-preview.jpg
 Disallow: /admin/
 Disallow: /api/
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
 
 # Sitemaps and Feeds for Google Search Console & Google News
 Sitemap: ${baseUrl}/sitemap.xml
@@ -828,9 +846,14 @@ export function createExpressApp() {
     next();
   });
 
-  // Simple in-memory rate limiter for API endpoints
+  // Simple in-memory rate limiter for API endpoints (exempting social crawler image requests)
   const ipRequests = new Map<string, { count: number; resetTime: number }>();
   app.use("/api", (req, res, next) => {
+    // Exempt article image generation for social share preview crawlers
+    if (req.path.startsWith("/article-image")) {
+      return next();
+    }
+
     const ip = (req.headers["x-forwarded-for"] as string) || req.ip || "unknown";
     const now = Date.now();
     const windowMs = 15 * 60 * 1000; // 15 mins
@@ -1089,10 +1112,18 @@ export function createExpressApp() {
   });
 
   // Serve binary article image for social crawlers (WhatsApp, Facebook, Twitter, Telegram)
-  app.get(["/api/article-image/:slug", "/api/article-image/:slug.jpg", "/api/article-image/*"], async (req, res) => {
+  app.get([
+    "/api/article-image/:slug", 
+    "/api/article-image/:slug.jpg", 
+    "/api/article-image/*",
+    "/article-image/:slug",
+    "/article-image/:slug.jpg",
+    "/article-image/*"
+  ], async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Accept-Ranges", "bytes");
     try {
-      let rawSlug = req.params.slug || req.params[0] || req.path.replace(/^\/api\/article-image\//, "") || "";
+      let rawSlug = req.params.slug || req.params[0] || req.path.replace(/^\/(?:api\/)?article-image\//, "") || "";
       let slug = rawSlug.replace(/\.jpg$/i, "").replace(/\.png$/i, "").replace(/\.webp$/i, "");
       if (slug.startsWith("article-image/")) {
         slug = slug.replace(/^article-image\//, "");
