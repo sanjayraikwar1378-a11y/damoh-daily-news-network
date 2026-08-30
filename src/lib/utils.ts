@@ -60,3 +60,60 @@ export function isWithin2Hours(dateVal: any): boolean {
   const ageInMs = now - timeInMs;
   return ageInMs >= -300000 && ageInMs <= TWO_HOURS_MS;
 }
+
+/**
+ * Checks if a given timestamp or date string is within the last 24 hours (1 day).
+ */
+export function isWithin24Hours(dateVal: any): boolean {
+  if (!dateVal) return false;
+  let timeInMs = 0;
+
+  if (typeof dateVal === 'number') {
+    timeInMs = dateVal;
+  } else if (typeof dateVal === 'string') {
+    timeInMs = new Date(dateVal).getTime();
+  } else if (dateVal && typeof dateVal === 'object') {
+    if (typeof dateVal.toDate === 'function') {
+      timeInMs = dateVal.toDate().getTime();
+    } else if ('seconds' in dateVal && typeof dateVal.seconds === 'number') {
+      timeInMs = dateVal.seconds * 1000;
+    } else {
+      timeInMs = new Date(dateVal).getTime();
+    }
+  }
+
+  if (isNaN(timeInMs) || timeInMs <= 0) return false;
+
+  const now = Date.now();
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  const ageInMs = now - timeInMs;
+
+  return ageInMs >= -300000 && ageInMs <= TWENTY_FOUR_HOURS_MS;
+}
+
+/**
+ * Formats relative time in bilingual Hindi/English for quick live updates
+ */
+export function formatLiveRelativeTime(dateVal: any): string {
+  if (!dateVal) return "अभी";
+  const timeInMs = new Date(dateVal).getTime();
+  if (isNaN(timeInMs)) return "अभी";
+
+  const diffMs = Date.now() - timeInMs;
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+
+  if (diffMinutes < 1) return "अभी";
+  if (diffMinutes === 1) return "1 मिनट पहले";
+  if (diffMinutes < 60) return `${diffMinutes} मिनट पहले`;
+  if (diffHours === 1) return "1 घंटा पहले";
+  if (diffHours < 24) return `${diffHours} घंटे पहले`;
+
+  return new Date(dateVal).toLocaleDateString('hi-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+

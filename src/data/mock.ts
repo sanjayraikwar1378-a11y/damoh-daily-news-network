@@ -41,6 +41,45 @@ export interface MediaItem {
 
 export type MessageStatus = 'new' | 'read' | 'resolved';
 
+export interface LiveUpdate {
+  id: string;
+  content: string;
+  imageUrl?: string;
+  imagePublicId?: string;
+  publishedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+  isUrgent?: boolean;
+  isActive: boolean;
+  authorName?: string;
+}
+
+export type NotificationPriority = 'normal' | 'breaking' | 'important' | 'urgent';
+export type NotificationCategory = 'breaking' | 'important' | 'local' | 'live_update';
+
+export interface NewsNotification {
+  id: string;
+  title: string;
+  body: string;
+  priority: NotificationPriority;
+  category: NotificationCategory;
+  articleId?: string;
+  articleSlug?: string;
+  liveUpdateId?: string;
+  targetUrl?: string;
+  imageUrl?: string;
+  createdAt: string;
+  isRead?: boolean;
+}
+
+export interface NotificationPreferences {
+  breaking: boolean;
+  important: boolean;
+  local: boolean;
+  liveUpdates: boolean;
+  browserPush: boolean;
+}
+
 export interface ContactMessage {
   id: string;
   fullName: string;

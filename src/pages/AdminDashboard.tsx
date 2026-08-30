@@ -1,4 +1,4 @@
-import { Users, FileText, Eye, TrendingUp, Zap, FolderTree, MessageSquare, Plus, Edit, ExternalLink, Image, DollarSign, Settings, BarChart3 } from "lucide-react"
+import { Users, FileText, Eye, TrendingUp, Zap, FolderTree, MessageSquare, Plus, Edit, ExternalLink, Image, DollarSign, Settings, BarChart3, Radio } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
@@ -7,7 +7,7 @@ import { Link } from "react-router-dom"
 import { useEffect } from "react"
 
 export function AdminDashboard() {
-  const { articles, reporters, categories, comments, loadAdminData } = useNews()
+  const { articles, reporters, categories, comments, liveUpdates, activeLiveUpdates, loadAdminData } = useNews()
 
   useEffect(() => {
     loadAdminData()
@@ -24,13 +24,14 @@ export function AdminDashboard() {
   const stats = [
     { label: "Total Articles", value: totalArticles, icon: FileText, color: "text-blue-600" },
     { label: "Published", value: publishedCount, icon: FileText, color: "text-green-600" },
+    { label: "Live Updates", value: activeLiveUpdates.length, badge: `${liveUpdates.length} total`, icon: Radio, color: "text-rose-600" },
     { label: "Drafts", value: draftsCount, icon: FileText, color: "text-amber-600" },
     { label: "Scheduled", value: scheduledCount, icon: FileText, color: "text-purple-600" },
     { label: "Breaking News", value: breakingCount, icon: Zap, color: "text-red-600" },
     { label: "Reporters", value: reporters.length, icon: Users, color: "text-indigo-600" },
     { label: "Categories", value: categories.length, icon: FolderTree, color: "text-teal-600" },
-    { label: "Comments", value: comments.length, badge: pendingComments ? `${pendingComments} pending` : null, icon: MessageSquare, color: "text-rose-600" },
-    { label: "Total Visitors / Views", value: totalViews, icon: Eye, color: "text-emerald-600" },
+    { label: "Comments", value: comments.length, badge: pendingComments ? `${pendingComments} pending` : null, icon: MessageSquare, color: "text-amber-600" },
+    { label: "Total Views", value: totalViews, icon: Eye, color: "text-emerald-600" },
   ]
 
   // Top Most Viewed Articles
@@ -151,6 +152,17 @@ export function AdminDashboard() {
             <CardTitle className="text-lg font-bold">Quick CMS Navigation</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <Link to="/admin/live-updates" className="flex items-center justify-between p-3 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 font-bold text-sm transition-colors border border-rose-200 dark:border-rose-900/60">
+              <span className="flex items-center gap-3">
+                <Radio className="h-4 w-4 animate-pulse text-rose-600" /> Live Updates Feed
+              </span>
+              {activeLiveUpdates.length > 0 && (
+                <span className="bg-rose-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  {activeLiveUpdates.length} Live
+                </span>
+              )}
+            </Link>
+
             <Link to="/admin/create" className="flex items-center gap-3 p-3 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-300 font-bold text-sm transition-colors">
               <Plus className="h-4 w-4" /> Write New Article
             </Link>

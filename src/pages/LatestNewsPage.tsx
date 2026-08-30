@@ -17,6 +17,7 @@ export function LatestNewsPage() {
     reporters, 
     bookmarks, 
     toggleBookmark, 
+    hasArticlesLoaded,
     isSyncingFirestore, 
     firestoreSyncError, 
     retryFirestoreSync,
@@ -277,11 +278,11 @@ export function LatestNewsPage() {
         ))}
       </div>
 
-      {/* Loading Skeleton state */}
-      {isSyncingFirestore && publishedArticles.length === 0 && (
+      {/* Loading Skeleton state: Only when initial data is loading and no articles exist */}
+      {((!hasArticlesLoaded && isSyncingFirestore) || (!hasArticlesLoaded && publishedArticles.length === 0)) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5, 6].map(n => (
-            <div key={n} className="border rounded-2xl p-4 bg-card space-y-4 animate-pulse">
+            <div key={n} className="border border-border/60 rounded-2xl p-4 bg-card space-y-4 animate-pulse">
               <div className="aspect-video bg-zinc-200 dark:bg-zinc-800 rounded-xl" />
               <div className="h-5 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded" />
               <div className="h-4 w-full bg-zinc-200 dark:bg-zinc-800 rounded" />
@@ -291,8 +292,8 @@ export function LatestNewsPage() {
         </div>
       )}
 
-      {/* Empty Search / Filter Result */}
-      {!isSyncingFirestore && filteredArticles.length === 0 && (
+      {/* Empty Search / Filter Result: ONLY when load has finished and truly 0 articles match */}
+      {hasArticlesLoaded && !isSyncingFirestore && filteredArticles.length === 0 && (
         <div className="text-center py-16 bg-card border rounded-2xl p-8 max-w-md mx-auto space-y-3">
           <div className="w-12 h-12 bg-red-100 dark:bg-red-950/50 rounded-full flex items-center justify-center text-red-600 mx-auto">
             <Search className="h-6 w-6" />
@@ -440,11 +441,20 @@ export function LatestNewsPage() {
             disabled={isLoadingMore}
             className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-md flex items-center gap-2 disabled:opacity-50"
           >
-            <span>{isLoadingMore ? "लोड हो रहा है..." : "और खबरें लोड करें (Load More News)"}</span>
-            <ChevronRight className="h-4 w-4" />
+            {isLoadingMore ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>और खबरें लोड हो रही हैं... (Loading...)</span>
+              </>
+            ) : (
+              <>
+                <span>और खबरें लोड करें (Load More News)</span>
+                <ChevronRight className="h-4 w-4" />
+              </>
+            )}
           </Button>
-          <span className="text-[11px] text-zinc-400">
-            {visibleArticles.length} articles shown
+          <span className="text-[11px] text-zinc-400 font-medium">
+            {visibleArticles.length} समाचार प्रदर्शित (shown)
           </span>
         </div>
       )}

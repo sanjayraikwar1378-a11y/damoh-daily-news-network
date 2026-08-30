@@ -98,7 +98,7 @@ export const ResponsiveImage = memo(function ResponsiveImage({
         loading={loading}
         // @ts-ignore fetchPriority is supported in modern browsers
         fetchPriority={effectiveFetchPriority}
-        decoding={isEager ? 'sync' : 'async'}
+        decoding={props.decoding || 'async'}
         style={style}
         onLoad={handleImageLoad}
         onError={handleImageError}
@@ -140,7 +140,7 @@ export const ResponsiveImage = memo(function ResponsiveImage({
       loading={loading}
       // @ts-ignore fetchPriority is supported in modern browsers
       fetchPriority={effectiveFetchPriority}
-      decoding={isEager ? 'sync' : 'async'}
+      decoding={props.decoding || 'async'}
       style={cardStyle}
       onLoad={handleImageLoad}
       onError={handleImageError}

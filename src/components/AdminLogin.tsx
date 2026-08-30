@@ -6,7 +6,9 @@ import {
   signInWithPopup,
   getAdditionalUserInfo,
   deleteUser,
-  signOut
+  signOut,
+  setPersistence,
+  browserSessionPersistence
 } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +42,9 @@ export function AdminLogin({ initialError }: AdminLoginProps = {}) {
     setSuccessMsg(null);
 
     try {
+      // Enforce session-only persistence so session is destroyed when the browser is closed
+      await setPersistence(auth, browserSessionPersistence);
+
       // Authenticate ONLY existing users with signInWithEmailAndPassword
       await signInWithEmailAndPassword(auth, email, password);
       setSuccessMsg("Authenticated successfully! Redirecting to CMS Admin...");
@@ -67,6 +72,9 @@ export function AdminLogin({ initialError }: AdminLoginProps = {}) {
     setSuccessMsg(null);
 
     try {
+      // Enforce session-only persistence so session is destroyed when the browser is closed
+      await setPersistence(auth, browserSessionPersistence);
+
       const userCredential = await signInWithPopup(auth, googleProvider);
       const additionalInfo = getAdditionalUserInfo(userCredential);
 

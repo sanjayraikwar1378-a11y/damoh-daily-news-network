@@ -220,7 +220,7 @@ export function ArticleDetail() {
       const canonicalOrigin = isLocalOrPreview ? window.location.origin : 'https://damoh-daily-news-network.vercel.app'
       const canonicalUrl = `${canonicalOrigin}/article/${cleanSlug}`
       const desc = article.excerpt || article.title
-      const img = article.imageUrl || "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1200&h=630&fit=crop"
+      const img = `${canonicalOrigin}/api/article-image/${encodeURIComponent(cleanSlug)}.jpg`
 
       const authorName = (article as any).authorName || reporter?.name || 'Damoh Daily News'
       updateMetaTag('name', 'description', desc)
@@ -230,6 +230,9 @@ export function ArticleDetail() {
       updateMetaTag('property', 'og:description', desc)
       updateMetaTag('property', 'og:image', img)
       updateMetaTag('property', 'og:image:secure_url', img)
+      updateMetaTag('property', 'og:image:type', 'image/jpeg')
+      updateMetaTag('property', 'og:image:width', '1200')
+      updateMetaTag('property', 'og:image:height', '630')
       updateMetaTag('property', 'og:url', canonicalUrl)
       updateMetaTag('property', 'article:published_time', article.publishedAt || new Date().toISOString())
       updateMetaTag('property', 'article:author', authorName)

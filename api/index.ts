@@ -3,6 +3,12 @@ import path from "path";
 import crypto from "crypto";
 import fs from "fs";
 import sharp from "sharp";
+import { 
+  startLiveUpdatesCleanupScheduler, 
+  performLiveUpdatesCleanup, 
+  destroyCloudinaryImage, 
+  extractCloudinaryPublicId 
+} from "./liveUpdatesCleanup";
 
 const INITIAL_CATEGORIES = [
   { id: 'c1', name: 'दमोह (Damoh)', slug: 'damoh' },
@@ -339,20 +345,65 @@ async function getDefaultShareImageBuffer(): Promise<Buffer> {
 
 async function createResizedImageBuffer(inputBuffer: Buffer, targetMime: 'image/jpeg' | 'image/png' = 'image/jpeg'): Promise<Buffer> {
   try {
-    if (targetMime === 'image/png') {
-      return await sharp(inputBuffer)
-        .resize(1200, 630, { fit: 'contain', background: { r: 24, g: 24, b: 27, alpha: 1 } })
-        .png({ quality: 90 })
-        .toBuffer();
+    if (!inputBuffer || inputBuffer.length === 0) {
+      return await getDefaultShareImageBuffer();
     }
 
-    return await sharp(inputBuffer)
-      .resize(1200, 630, { fit: 'cover', position: 'center' })
-      .jpeg({ quality: 85, mozjpeg: true })
+    const TARGET_WIDTH = 1200;
+    const TARGET_HEIGHT = 630;
+
+    // 1. Create background canvas:
+    // Resize input image to 1200x630 with 'cover', apply Gaussian blur and subtle dimming/saturation boost
+    // so it forms a seamless, natural extension of the original image with no black/white letterbox bars.
+    const backgroundBuffer = await sharp(inputBuffer)
+      .rotate() // Automatically orient based on EXIF metadata
+      .resize(TARGET_WIDTH, TARGET_HEIGHT, {
+        fit: 'cover',
+        position: 'center'
+      })
+      .blur(28) // High quality smooth Gaussian blur
+      .modulate({
+        brightness: 0.82, // Subtle dimming for focus on foreground
+        saturation: 1.15  // Rich matching ambient color palette
+      })
+      .toBuffer();
+
+    // 2. Create foreground image:
+    // Resize original image with 'inside' so 100% of the original image is preserved without any cropping,
+    // stretching, zooming, or distortion.
+    const foregroundBuffer = await sharp(inputBuffer)
+      .rotate() // Automatically orient based on EXIF metadata
+      .resize(TARGET_WIDTH, TARGET_HEIGHT, {
+        fit: 'inside',
+        withoutEnlargement: false
+      })
+      .toBuffer();
+
+    // 3. Composite foreground centered on top of the blurred background
+    return await sharp(backgroundBuffer)
+      .composite([
+        {
+          input: foregroundBuffer,
+          gravity: 'center'
+        }
+      ])
+      .jpeg({
+        quality: 90,
+        mozjpeg: true,
+        progressive: true
+      })
       .toBuffer();
   } catch (err) {
-    console.warn("sharp image resize warning:", err);
-    return inputBuffer;
+    console.warn("sharp 1200x630 social image generation warning:", err);
+    try {
+      return await sharp(inputBuffer)
+        .rotate()
+        .resize(1200, 630, { fit: 'cover', position: 'center' })
+        .jpeg({ quality: 85, mozjpeg: true })
+        .toBuffer();
+    } catch {
+      return inputBuffer;
+    }
   }
 }
 
@@ -361,35 +412,7 @@ function getArticleImageUrl(article: Record<string, any> | null, slug: string, b
     return `${baseUrl}/social-preview.jpg`;
   }
 
-  const rawImage = article.imageUrl || article.ogImage || article.featuredImage || article.image || article.photoUrl;
   const safeSlug = encodeURIComponent(slug || article.slug || article.id || "article");
-
-  // 1. Base64 Data URI -> Always serve via high-performance binary image endpoint
-  if (rawImage && typeof rawImage === "string" && rawImage.toLowerCase().startsWith("data:")) {
-    return `${baseUrl}/api/article-image/${safeSlug}.jpg`;
-  }
-
-  // 2. Direct HTTP/HTTPS Image URL
-  if (rawImage && typeof rawImage === "string" && rawImage.trim()) {
-    let url = rawImage.trim();
-    if (url.startsWith("//")) url = `https:${url}`;
-    else if (url.startsWith("/")) url = `${baseUrl}${url}`;
-    else if (url.startsWith("http://")) url = `https://${url.slice(7)}`;
-
-    if (url.startsWith("https://") && !url.toLowerCase().includes("data:")) {
-      return url.replace(/&amp;/g, "&");
-    }
-  }
-
-  // 3. YouTube Thumbnail fallback
-  if (article.youtubeUrl && typeof article.youtubeUrl === "string") {
-    const ytMatch = article.youtubeUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
-    if (ytMatch && ytMatch[1]) {
-      return `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
-    }
-  }
-
-  // 4. Default fallback binary endpoint
   return `${baseUrl}/api/article-image/${safeSlug}.jpg`;
 }
 
@@ -856,6 +879,33 @@ export function createExpressApp() {
     }
   });
 
+  // Automated 7-Day Live Updates Cleanup Endpoint
+  app.all("/api/live-updates/cleanup", async (_req, res) => {
+    try {
+      const result = await performLiveUpdatesCleanup();
+      return res.status(200).json(result);
+    } catch (err: any) {
+      console.error("[LiveUpdates Cleanup] Manual execution error:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to execute cleanup" });
+    }
+  });
+
+  // Associated Live Update Image Deletion Endpoint (for immediate admin panel delete)
+  app.post("/api/live-updates/delete-image", async (req, res) => {
+    try {
+      const { publicId, imageUrl } = req.body || {};
+      const targetPublicId = publicId || extractCloudinaryPublicId(imageUrl);
+      if (!targetPublicId) {
+        return res.status(200).json({ success: false, message: "No Cloudinary asset found to destroy" });
+      }
+      const success = await destroyCloudinaryImage(targetPublicId);
+      return res.status(200).json({ success, publicId: targetPublicId });
+    } catch (err: any) {
+      console.warn("[LiveUpdates Cleanup] Error deleting image asset:", err);
+      return res.status(500).json({ success: false, error: err?.message });
+    }
+  });
+
   // Live Damoh Weather Proxy API with in-memory caching and fail-safe fallback
   let weatherCache: { data: any; timestamp: number } | null = null;
   const WEATHER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
@@ -998,7 +1048,10 @@ export function createExpressApp() {
           if (url.startsWith("http://")) url = `https://${url.slice(7)}`;
           if (url.startsWith("https://")) {
             try {
-              const fetchRes = await fetch(url, { headers: { "User-Agent": "DamohDailyNews-ImageProxy/1.0" } });
+              const fetchRes = await fetch(url, { 
+                headers: { "User-Agent": "DamohDailyNews-ImageProxy/1.0" },
+                signal: AbortSignal.timeout(6000)
+              });
               if (fetchRes.ok) {
                 const arrayBuf = await fetchRes.arrayBuffer();
                 const rawBuffer = Buffer.from(arrayBuf);
@@ -1023,7 +1076,7 @@ export function createExpressApp() {
           if (ytMatch && ytMatch[1]) {
             try {
               const ytUrl = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
-              const ytRes = await fetch(ytUrl);
+              const ytRes = await fetch(ytUrl, { signal: AbortSignal.timeout(5000) });
               if (ytRes.ok) {
                 const arrayBuf = await ytRes.arrayBuffer();
                 const rawBuffer = Buffer.from(arrayBuf);

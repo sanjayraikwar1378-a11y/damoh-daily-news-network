@@ -1,6 +1,10 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getAuth, 
+  setPersistence,
+  browserSessionPersistence,
+  browserLocalPersistence,
+  inMemoryPersistence,
   signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
@@ -29,6 +33,7 @@ import {
   startAfter,
   serverTimestamp 
 } from "firebase/firestore";
+
 // Read Firebase config from environment variables or project defaults
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAqqGLWs0rXdM_Cp2q2HPkDgToASXCCoCM",
@@ -47,7 +52,14 @@ const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Initialize Firestore (using custom database ID if specified in config) with auto long-polling for network resilience
+// Enforce session-based persistence for Firebase Auth on web clients
+if (typeof window !== "undefined") {
+  setPersistence(auth, browserSessionPersistence).catch((err) => {
+    console.warn("Could not set session persistence for Firebase Auth:", err);
+  });
+}
+
+// Initialize Firestore with auto-detect long-polling for network resilience
 const databaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || "(default)";
 const firestoreSettings = {
   experimentalAutoDetectLongPolling: true
@@ -68,6 +80,10 @@ export const db = firestoreInstance;
 
 export type { User };
 export { 
+  setPersistence,
+  browserSessionPersistence,
+  browserLocalPersistence,
+  inMemoryPersistence,
   signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged, 

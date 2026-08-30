@@ -5,6 +5,7 @@ import {
   Reporter, 
   Comment, 
   MediaItem, 
+  LiveUpdate,
   AdSettings, 
   SiteSettings, 
   MarketRates,
@@ -32,7 +33,7 @@ import {
   startAfter,
   sanitizeFirestoreData 
 } from '@/lib/firebase';
-import { isWithin48Hours } from '@/lib/utils';
+import { isWithin48Hours, isWithin24Hours } from '@/lib/utils';
 import { saveArticlesToCache, getStoredArticlesList, saveArticlesListToStorage } from '@/lib/articleCache';
 import { sanitizeSlug, generateUniqueSlug, createSlug, stripGeneratedSuffixes, cleanArticleSlugIfNeeded } from '@/lib/slug';
 
@@ -50,6 +51,14 @@ interface NewsContextType {
   bulkDeleteArticles: (ids: string[]) => void;
   incrementViews: (id: string) => void;
   toggleLike: (id: string) => void;
+
+  // Live Updates
+  liveUpdates: LiveUpdate[];
+  activeLiveUpdates: LiveUpdate[];
+  addLiveUpdate: (update: Omit<LiveUpdate, 'id' | 'createdAt'>) => Promise<LiveUpdate>;
+  updateLiveUpdate: (id: string, update: Partial<LiveUpdate>) => Promise<void>;
+  deleteLiveUpdate: (id: string) => Promise<void>;
+  toggleLiveUpdateActive: (id: string) => Promise<void>;
 
   // Categories
   categories: Category[];
@@ -91,6 +100,7 @@ interface NewsContextType {
 
   // Status & Optimization
   hasArticlesLoaded: boolean;
+  hasLiveUpdatesLoaded: boolean;
   isSyncingFirestore: boolean;
   firestoreSyncError: boolean;
   retryFirestoreSync: () => void;
@@ -99,6 +109,8 @@ interface NewsContextType {
   hasMoreArticles: boolean;
   fetchMoreArticles: () => Promise<Article[]>;
   fetchCategoryArticles: (categoryId: string) => Promise<Article[]>;
+  isCategoryLoading: (categoryId: string) => boolean;
+  isCategoryLoaded: (categoryId: string) => boolean;
   searchArticlesRemote: (queryStr: string) => Promise<Article[]>;
 }
 
@@ -108,6 +120,10 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   // Initialize articles with local cache if available for instant initial render
   const [articles, setArticles] = useState<Article[]>(() => getStoredArticlesList());
   const [hasArticlesLoaded, setHasArticlesLoaded] = useState<boolean>(() => getStoredArticlesList().length > 0);
+  const [hasLiveUpdatesLoaded, setHasLiveUpdatesLoaded] = useState<boolean>(false);
+  const [loadingCategoryIds, setLoadingCategoryIds] = useState<Record<string, boolean>>({});
+  const [loadedCategoryIds, setLoadedCategoryIds] = useState<Record<string, boolean>>({});
+  const [liveUpdates, setLiveUpdates] = useState<LiveUpdate[]>([]);
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
   const [reporters, setReporters] = useState<Reporter[]>(INITIAL_REPORTERS);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -245,8 +261,17 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   }, [articles]);
 
   // Fetch all articles for a specific category on demand
+  const isCategoryLoading = useCallback((categoryId: string) => {
+    return Boolean(loadingCategoryIds[categoryId]);
+  }, [loadingCategoryIds]);
+
+  const isCategoryLoaded = useCallback((categoryId: string) => {
+    return Boolean(loadedCategoryIds[categoryId]);
+  }, [loadedCategoryIds]);
+
   const fetchCategoryArticles = useCallback(async (categoryId: string): Promise<Article[]> => {
     if (!categoryId) return [];
+    setLoadingCategoryIds(prev => ({ ...prev, [categoryId]: true }));
     try {
       const q = query(
         collection(db, "articles"),
@@ -254,9 +279,17 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         limit(50)
       );
       const snap = await getDocs(q);
-      if (snap.empty) return [];
+      if (snap.empty) {
+        setLoadedCategoryIds(prev => ({ ...prev, [categoryId]: true }));
+        setLoadingCategoryIds(prev => ({ ...prev, [categoryId]: false }));
+        return [];
+      }
       const catList: Article[] = [];
-      snap.forEach(d => catList.push(d.data() as Article));
+      snap.forEach(d => {
+        const art = d.data() as Article;
+        const { article: cleaned } = cleanArticleSlugIfNeeded(art);
+        catList.push(cleaned);
+      });
 
       setArticles(prev => {
         const existingIds = new Set(prev.map(a => a.id));
@@ -268,9 +301,13 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         saveArticlesToCache(merged);
         return merged;
       });
+      setLoadedCategoryIds(prev => ({ ...prev, [categoryId]: true }));
+      setLoadingCategoryIds(prev => ({ ...prev, [categoryId]: false }));
       return catList;
     } catch (err) {
       console.warn("fetchCategoryArticles notice:", err);
+      setLoadedCategoryIds(prev => ({ ...prev, [categoryId]: true }));
+      setLoadingCategoryIds(prev => ({ ...prev, [categoryId]: false }));
       return [];
     }
   }, []);
@@ -323,7 +360,9 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   // 1. Lightweight Public Real-time Articles Subscription + Non-blocking Secondary Sync
   useEffect(() => {
     let unsubArticles = () => {};
+    let unsubLive = () => {};
     let isMounted = true;
+    let secondaryTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Safety timeout: reset syncing state after 3s if slow network occurs
     const safetyTimer = setTimeout(() => {
@@ -403,11 +442,8 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    fetchPublicSettings();
-    fetchPublicMetadata();
-
+    // 1. Immediate Critical Path: Primary News Articles Subscription (Top 25 recent articles for rapid mobile payload)
     try {
-      // 1. Articles Sync (Top 25 recent articles for rapid mobile payload)
       const articlesQuery = query(collection(db, "articles"), orderBy("publishedAt", "desc"), limit(25));
       unsubArticles = onSnapshot(articlesQuery, (snap) => {
         if (!isMounted) return;
@@ -435,12 +471,66 @@ export function NewsProvider({ children }: { children: ReactNode }) {
           setIsSyncingFirestore(false);
         }
       });
-
     } catch (err) {
-      console.warn("Public listeners warning:", err);
+      console.warn("Articles listener initialization warning:", err);
       if (isMounted) {
         setIsSyncingFirestore(false);
       }
+    }
+
+    // 2. Defer Secondary Collections (Settings, Metadata, Live Updates) to allow immediate First Viewport Paint
+    const startSecondarySync = () => {
+      if (!isMounted) return;
+      
+      // Fetch non-blocking settings and metadata
+      fetchPublicSettings();
+      fetchPublicMetadata();
+
+      // Live Updates Sync - Single Shared Real-time Listener (Only active updates from last 24 hours)
+      try {
+        const twentyFourHoursAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const liveUpdatesQuery = query(
+          collection(db, "live_updates"),
+          where("publishedAt", ">=", twentyFourHoursAgoIso),
+          orderBy("publishedAt", "desc"),
+          limit(40)
+        );
+        unsubLive = onSnapshot(liveUpdatesQuery, (snap) => {
+          if (!isMounted) return;
+          const list: LiveUpdate[] = [];
+          snap.forEach((d) => {
+            const data = d.data() as LiveUpdate;
+            if (data.isActive !== false) {
+              list.push({ ...data, id: d.id || data.id });
+            }
+          });
+          if (list.length > 0) {
+            list.sort((a, b) => new Date(b.publishedAt || b.createdAt || 0).getTime() - new Date(a.publishedAt || a.createdAt || 0).getTime());
+            setLiveUpdates(list);
+          } else {
+            setLiveUpdates([]);
+          }
+          setHasLiveUpdatesLoaded(true);
+        }, (err) => {
+          console.warn("Live updates listener notice:", err);
+          if (isMounted) {
+            setHasLiveUpdatesLoaded(true);
+          }
+        });
+      } catch (err) {
+        console.warn("Live updates listener initialization notice:", err);
+        if (isMounted) {
+          setHasLiveUpdatesLoaded(true);
+        }
+      }
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      (window as any).requestIdleCallback(() => {
+        secondaryTimer = setTimeout(startSecondarySync, 100);
+      }, { timeout: 800 });
+    } else {
+      secondaryTimer = setTimeout(startSecondarySync, 200);
     }
 
     // LocalStorage user bookmarks and history
@@ -456,6 +546,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       clearTimeout(safetyTimer);
       unsubArticles();
+      unsubLive();
     };
   }, [syncRetryCount]);
 
@@ -557,6 +648,18 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       if (snap.exists()) setMarketRates(snap.data() as MarketRates);
     }, (err) => console.warn("Market rates listener notice:", err));
 
+    const unsubAdminLive = onSnapshot(query(collection(db, "live_updates"), orderBy("publishedAt", "desc")), (snap) => {
+      const list: LiveUpdate[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as LiveUpdate;
+        list.push({ ...data, id: d.id || data.id });
+      });
+      if (list.length > 0) {
+        list.sort((a, b) => new Date(b.publishedAt || b.createdAt || 0).getTime() - new Date(a.publishedAt || a.createdAt || 0).getTime());
+        setLiveUpdates(list);
+      }
+    }, (err) => console.warn("Admin live updates listener notice:", err));
+
     return () => {
       unsubAdminArticles();
       unsubReporters();
@@ -565,6 +668,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       unsubSettingsSite();
       unsubSettingsAds();
       unsubSettingsMarket();
+      unsubAdminLive();
       setIsAdminDataLoaded(false);
     };
   }, [isAdminDataLoaded]);
@@ -958,6 +1062,80 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // Live Updates Actions
+  const addLiveUpdate = async (data: Omit<LiveUpdate, 'id' | 'createdAt'>): Promise<LiveUpdate> => {
+    const id = `lu_${Date.now()}`;
+    const now = new Date().toISOString();
+    const newUpdate: LiveUpdate = {
+      ...data,
+      id,
+      content: data.content.trim(),
+      imageUrl: data.imageUrl && data.imageUrl.trim() ? data.imageUrl.trim() : undefined,
+      publishedAt: data.publishedAt || now,
+      createdAt: now,
+      updatedAt: now,
+      isUrgent: !!data.isUrgent,
+      isActive: data.isActive !== false,
+      authorName: data.authorName || 'Damoh Daily News Desk'
+    };
+
+    const docData = sanitizeFirestoreData(newUpdate);
+    await setDoc(doc(db, "live_updates", id), docData);
+
+    setLiveUpdates(prev => [newUpdate, ...prev.filter(u => u.id !== id)]);
+    return newUpdate;
+  };
+
+  const updateLiveUpdate = async (id: string, data: Partial<LiveUpdate>): Promise<void> => {
+    const now = new Date().toISOString();
+    const updatedData: Partial<LiveUpdate> = {
+      ...data,
+      updatedAt: now,
+      ...(data.content ? { content: data.content.trim() } : {}),
+      ...(data.imageUrl !== undefined ? { imageUrl: data.imageUrl ? data.imageUrl.trim() : undefined } : {})
+    };
+
+    const docData = sanitizeFirestoreData(updatedData);
+    await setDoc(doc(db, "live_updates", id), docData, { merge: true });
+
+    setLiveUpdates(prev => prev.map(u => u.id === id ? { ...u, ...updatedData } as LiveUpdate : u));
+  };
+
+  const deleteLiveUpdate = async (id: string): Promise<void> => {
+    const target = liveUpdates.find(u => u.id === id);
+    const targetImgUrl = target?.imageUrl;
+    const targetImgPublicId = target?.imagePublicId;
+
+    setLiveUpdates(prev => prev.filter(u => u.id !== id));
+    try {
+      await deleteDoc(doc(db, "live_updates", id));
+      // Delete associated image from Cloudinary if present to prevent orphaned media files
+      if (targetImgPublicId || (targetImgUrl && targetImgUrl.includes('res.cloudinary.com'))) {
+        fetch("/api/live-updates/delete-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ publicId: targetImgPublicId, imageUrl: targetImgUrl })
+        }).catch(e => console.warn("Failed to trigger live update image cleanup:", e));
+      }
+    } catch (err) {
+      console.error("Error deleting live update from Firestore:", err);
+    }
+  };
+
+  const toggleLiveUpdateActive = async (id: string): Promise<void> => {
+    const target = liveUpdates.find(u => u.id === id);
+    if (!target) return;
+    const newActive = !target.isActive;
+    await updateLiveUpdate(id, { isActive: newActive });
+  };
+
+  // Active live updates selector: Only active updates published within the last 24 hours
+  const activeLiveUpdates = useMemo(() => {
+    return liveUpdates
+      .filter(item => item.isActive !== false && isWithin24Hours(item.publishedAt || item.createdAt))
+      .sort((a, b) => new Date(b.publishedAt || b.createdAt || 0).getTime() - new Date(a.publishedAt || a.createdAt || 0).getTime());
+  }, [liveUpdates]);
+
   // Active breaking news selector: includes ALL published articles from the last 48 hours.
   // Priority: 'isBreaking === true' articles appear FIRST (newest first), followed by remaining published articles (newest first).
   const breakingNews = useMemo(() => {
@@ -1000,8 +1178,14 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   const contextValue = useMemo(() => ({
     articles,
     breakingNews,
+    liveUpdates,
+    activeLiveUpdates,
+    addLiveUpdate,
+    updateLiveUpdate,
+    deleteLiveUpdate,
+    toggleLiveUpdateActive,
     addArticle,
- updateArticle,
+    updateArticle,
     deleteArticle,
     duplicateArticle,
     bulkUpdateStatus,
@@ -1035,6 +1219,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     readingHistory,
     addToHistory,
     hasArticlesLoaded,
+    hasLiveUpdatesLoaded,
     isSyncingFirestore,
     firestoreSyncError,
     retryFirestoreSync,
@@ -1043,10 +1228,18 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     hasMoreArticles,
     fetchMoreArticles,
     fetchCategoryArticles,
+    isCategoryLoading,
+    isCategoryLoaded,
     searchArticlesRemote
   }), [
     articles,
     breakingNews,
+    liveUpdates,
+    activeLiveUpdates,
+    addLiveUpdate,
+    updateLiveUpdate,
+    deleteLiveUpdate,
+    toggleLiveUpdateActive,
     categories,
     reporters,
     comments,
@@ -1057,6 +1250,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     bookmarks,
     readingHistory,
     hasArticlesLoaded,
+    hasLiveUpdatesLoaded,
     isSyncingFirestore,
     firestoreSyncError,
     retryFirestoreSync,
@@ -1065,6 +1259,8 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     hasMoreArticles,
     fetchMoreArticles,
     fetchCategoryArticles,
+    isCategoryLoading,
+    isCategoryLoaded,
     searchArticlesRemote
   ]);
 

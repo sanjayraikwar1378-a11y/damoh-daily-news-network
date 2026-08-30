@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initServiceWorker } from './lib/serviceWorker';
 
 // Filter out benign HMR WebSocket connection warnings/errors from taking down the page
 window.addEventListener('error', (event) => {
@@ -29,23 +30,8 @@ if (rootElement) {
   );
 }
 
-// Proactively unregister any active/legacy Service Worker and clean up SW caches to ensure blazing-fast direct loads
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      registration.unregister().catch(() => {});
-    }
-  }).catch(() => {});
+// Initialize centralized Service Worker and purge legacy caches
+initServiceWorker();
 
-  if ('caches' in window) {
-    caches.keys().then((keys) => {
-      keys.forEach((key) => {
-        if (key.includes('damoh') || key.includes('workbox') || key.includes('sw-')) {
-          caches.delete(key).catch(() => {});
-        }
-      });
-    }).catch(() => {});
-  }
-}
 
 

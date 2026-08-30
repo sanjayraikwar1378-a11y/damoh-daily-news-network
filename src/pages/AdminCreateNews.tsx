@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
 import { useNavigate, useParams, Link } from "react-router-dom"
-import { ArticleStatus } from "@/data/mock"
+import { ArticleStatus, NotificationPriority, NotificationCategory } from "@/data/mock"
+import { useNotification } from "@/context/NotificationContext"
 import { getYouTubeEmbedUrl, isValidYouTubeUrl, extractYouTubeId } from "@/lib/youtube"
 import { uploadToCloudinary } from "@/lib/cloudinary"
 import { ResponsiveImage } from "@/components/ResponsiveImage"
@@ -18,12 +19,18 @@ export function AdminCreateNews() {
   const isEditing = Boolean(id)
 
   const { articles, categories, reporters, addArticle, updateArticle, media } = useNews()
+  const { sendNotification } = useNotification()
   const navigate = useNavigate()
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [showMediaPicker, setShowMediaPicker] = useState(false)
   const [previewModal, setPreviewModal] = useState(false)
+
+  // Notification controls state
+  const [sendPush, setSendPush] = useState(false)
+  const [notifPriority, setNotifPriority] = useState<NotificationPriority>("normal")
+  const [notifCategory, setNotifCategory] = useState<NotificationCategory>("local")
 
   const [formData, setFormData] = useState({
     title: "",
@@ -166,10 +173,36 @@ export function AdminCreateNews() {
         keywords: formData.keywords.trim(),
       }
 
+      let savedArticleId = id;
       if (isEditing && id) {
         await updateArticle(id, payload)
       } else {
-        await addArticle(payload)
+        const newArt = await addArticle(payload)
+        if (newArt && newArt.id) {
+          savedArticleId = newArt.id;
+        }
+      }
+
+      // If Push Notification toggle is on and targetStatus is published, dispatch broadcast notification
+      if (sendPush && targetStatus === 'published') {
+        try {
+          const notifTitle = formData.title.trim();
+          const notifBody = formData.excerpt.trim() || formData.title.trim();
+          const targetSlug = formData.slug.trim();
+
+          await sendNotification({
+            title: notifTitle,
+            body: notifBody,
+            priority: notifPriority,
+            category: notifCategory,
+            articleId: savedArticleId || undefined,
+            articleSlug: targetSlug || undefined,
+            targetUrl: targetSlug ? `/article/${targetSlug}` : '/',
+            imageUrl: formData.imageUrl || undefined
+          });
+        } catch (notifErr) {
+          console.warn("[Admin] Notification broadcast warning:", notifErr);
+        }
       }
 
       setIsSubmitting(false)
@@ -435,6 +468,73 @@ export function AdminCreateNews() {
                   <span className="text-sm font-medium">Trending Story</span>
                 </label>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Broadcast Push Notification Settings Card */}
+          <Card className="border-red-500/20 bg-gradient-to-b from-red-950/10 to-transparent">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-bold flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                  <span>पुश नोटिफिकेशन (Push Alert)</span>
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 pt-0 space-y-4">
+              <label className="flex items-center justify-between p-3 rounded-lg border border-red-500/30 bg-red-600/10 cursor-pointer">
+                <div>
+                  <p className="text-xs font-bold text-red-500">🔔 Send Push Notification</p>
+                  <p className="text-[11px] text-zinc-500">प्रकाशित होते ही पाठकों को तुरंत नोटिफिकेशन भेजें</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={sendPush}
+                  onChange={(e) => setSendPush(e.target.checked)}
+                  className="rounded text-red-600 focus:ring-red-600 w-4 h-4"
+                />
+              </label>
+
+              {sendPush && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  className="space-y-3 pt-2"
+                >
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-500 uppercase">Priority Level</label>
+                    <select
+                      value={notifPriority}
+                      onChange={(e) => setNotifPriority(e.target.value as NotificationPriority)}
+                      className="w-full p-2 text-xs border rounded-md bg-background"
+                    >
+                      <option value="normal">Normal (सामान्य समाचार)</option>
+                      <option value="important">Important (⭐ महत्वपूर्ण समाचार)</option>
+                      <option value="breaking">Breaking (🔴 ब्रेकिंग न्यूज़)</option>
+                      <option value="urgent">Urgent (🚨 तात्कालिक / आपातकालीन)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-zinc-500 uppercase">Notification Category</label>
+                    <select
+                      value={notifCategory}
+                      onChange={(e) => setNotifCategory(e.target.value as NotificationCategory)}
+                      className="w-full p-2 text-xs border rounded-md bg-background"
+                    >
+                      <option value="local">Damoh Local (📍 दमोह लोकल)</option>
+                      <option value="breaking">Breaking (🔴 ब्रेकिंग)</option>
+                      <option value="important">Important (📰 प्रमुख)</option>
+                    </select>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 border text-[11px] text-zinc-600 dark:text-zinc-400 space-y-1">
+                    <p className="font-bold text-zinc-800 dark:text-zinc-200">पूर्वावलोकन (Notification Preview):</p>
+                    <p className="font-semibold text-red-600">{notifPriority === "urgent" ? "🚨 तात्कालिक:" : notifPriority === "breaking" ? "🔴 ब्रेकिंग:" : "📰"} {formData.title || "समाचार शीर्षक"}</p>
+                    <p className="line-clamp-2">{formData.excerpt || "समाचार का संक्षिप्त विवरण..."}</p>
+                  </div>
+                </motion.div>
+              )}
             </CardContent>
           </Card>
 

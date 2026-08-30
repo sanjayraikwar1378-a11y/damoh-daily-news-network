@@ -2,6 +2,7 @@ import { Outlet, Link } from "react-router-dom"
 import { Header } from "./Header"
 import { useNews } from "@/context/NewsContext"
 import { LogoImage } from "@/components/LogoImage"
+import { LiveUpdatesWidget } from "@/components/LiveUpdatesWidget"
 import { Mail, MapPin, MessageSquare, Facebook, Twitter, Instagram, Youtube, Send } from "lucide-react"
 
 export function MainLayout() {
@@ -13,6 +14,9 @@ export function MainLayout() {
       <main className="flex-1">
         <Outlet />
       </main>
+
+      {/* Floating Live Updates Widget & Real-time Alerts */}
+      <LiveUpdatesWidget />
       
       <footer className="bg-zinc-950 text-zinc-400 py-10 md:py-12 border-t border-zinc-800 mt-auto">
         <div className="container mx-auto px-4 max-w-7xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">

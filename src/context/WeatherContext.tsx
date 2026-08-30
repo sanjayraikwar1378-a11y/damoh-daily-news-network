@@ -257,9 +257,18 @@ export const WeatherProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [])
 
   useEffect(() => {
+    let idleTimer: any = null;
     // Initial fetch if cache expired or missing
     if (!weather || (Date.now() - (weather.lastUpdatedTimestamp || 0) > CACHE_TTL_MS)) {
-      fetchLiveWeather()
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        idleTimer = (window as any).requestIdleCallback(() => {
+          fetchLiveWeather();
+        }, { timeout: 1500 });
+      } else {
+        idleTimer = setTimeout(() => {
+          fetchLiveWeather();
+        }, 500);
+      }
     }
 
     // Interval refresh every 15 minutes
@@ -267,7 +276,15 @@ export const WeatherProvider: React.FC<{ children: React.ReactNode }> = ({ child
       fetchLiveWeather()
     }, CACHE_TTL_MS)
 
-    return () => clearInterval(interval)
+    return () => {
+      if (idleTimer) {
+        if (typeof window !== "undefined" && "cancelIdleCallback" in window && typeof idleTimer === "number") {
+          try { (window as any).cancelIdleCallback(idleTimer); } catch {}
+        }
+        clearTimeout(idleTimer);
+      }
+      clearInterval(interval);
+    }
   }, [fetchLiveWeather])
 
   const contextValue = React.useMemo(() => ({

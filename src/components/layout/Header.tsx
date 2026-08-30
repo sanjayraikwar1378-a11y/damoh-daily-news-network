@@ -6,6 +6,7 @@ import { useNews } from "@/context/NewsContext"
 import { useWeather } from "@/context/WeatherContext"
 import { SearchBar } from "@/components/SearchBar"
 import { BreakingNewsTicker } from "@/components/BreakingNewsTicker"
+import { NotificationCenter } from "@/components/NotificationCenter"
 import { LogoImage } from "@/components/LogoImage"
 import { motion, AnimatePresence } from "motion/react"
 
@@ -253,8 +254,9 @@ export function Header() {
           </nav>
         </div>
         
-        {/* Right Tools: Search & Theme Toggle */}
+        {/* Right Tools: Notification Bell, Search & Theme Toggle */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto relative z-20">
+          <NotificationCenter />
           <SearchBar />
           <Button 
             type="button"

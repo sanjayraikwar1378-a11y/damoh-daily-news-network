@@ -10,7 +10,7 @@ import { formatDistanceToNow } from "date-fns"
 import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
 
 export function UserBookmarks() {
-  const { articles, bookmarks, toggleBookmark, readingHistory, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
+  const { articles, bookmarks, toggleBookmark, readingHistory, hasArticlesLoaded, isSyncingFirestore, firestoreSyncError, retryFirestoreSync } = useNews()
   const [activeTab, setActiveTab] = useState<'bookmarks' | 'history'>('bookmarks')
 
   const bookmarkedArticles = articles.filter(a => bookmarks.includes(a.id))
@@ -53,12 +53,12 @@ export function UserBookmarks() {
       </div>
 
       <div className="space-y-4">
-        {firestoreSyncError && activeList.length === 0 ? (
+        {firestoreSyncError && activeList.length === 0 && !hasArticlesLoaded ? (
           <FirestoreErrorBanner onRetry={retryFirestoreSync} />
-        ) : isSyncingFirestore && activeList.length === 0 ? (
+        ) : (!hasArticlesLoaded || isSyncingFirestore) && activeList.length === 0 ? (
           <div className="space-y-4">
             {[1, 2, 3].map(n => (
-              <div key={n} className="p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl flex gap-4 items-center animate-pulse">
+              <div key={n} className="p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl flex gap-4 items-center animate-pulse bg-card">
                 <div className="w-24 h-16 bg-zinc-200 dark:bg-zinc-800 rounded flex-shrink-0" />
                 <div className="space-y-2 flex-1">
                   <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-800 rounded" />
@@ -107,7 +107,7 @@ export function UserBookmarks() {
               </Card>
             ))}
 
-            {!isSyncingFirestore && !firestoreSyncError && activeList.length === 0 && (
+            {hasArticlesLoaded && !isSyncingFirestore && !firestoreSyncError && activeList.length === 0 && (
               <div className="text-center py-16 text-zinc-500 border rounded-2xl bg-zinc-50 dark:bg-zinc-900/50">
                 {activeTab === 'bookmarks' ? 'कोई बुकमार्क की गई खबर नहीं है।' : 'कोई पठन इतिहास उपलब्ध नहीं है।'}
               </div>

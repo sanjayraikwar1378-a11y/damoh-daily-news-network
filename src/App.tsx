@@ -10,6 +10,8 @@ import { MainLayout } from "./components/layout/MainLayout"
 import { Home } from "./pages/Home"
 import { NewsProvider } from "./context/NewsContext"
 import { WeatherProvider } from "./context/WeatherContext"
+import { NotificationProvider } from "./context/NotificationContext"
+import { NotificationPromptCard } from "./components/NotificationPromptCard"
 import { ScrollToTop } from "./components/ScrollToTop"
 
 // Lazy-loaded Admin Layout
@@ -34,6 +36,7 @@ const PrivacyPolicy = lazy(() => import("./pages/LegalPages").then(m => ({ defau
 
 // Admin Pages
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard").then(m => ({ default: m.AdminDashboard })))
+const AdminLiveUpdates = lazy(() => import("./pages/AdminLiveUpdates").then(m => ({ default: m.AdminLiveUpdates })))
 const AdminCreateNews = lazy(() => import("./pages/AdminCreateNews").then(m => ({ default: m.AdminCreateNews })))
 const AdminCategories = lazy(() => import("./pages/AdminCategories").then(m => ({ default: m.AdminCategories })))
 const AdminNews = lazy(() => import("./pages/AdminNews").then(m => ({ default: m.AdminNews })))
@@ -63,53 +66,57 @@ export default function App() {
     <ErrorBoundary>
       <WeatherProvider>
         <NewsProvider>
-          <Router>
-            <ScrollToTop />
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/" element={<MainLayout />}>
-                  <Route index element={<Home />} />
-                  <Route path="latest-news" element={<LatestNewsPage />} />
-                  <Route path="article/:slug" element={<ArticleDetail />} />
-                  <Route path="category/:slug" element={<CategoryPage />} />
-                  <Route path="search" element={<SearchResults />} />
-                  <Route path="bookmarks" element={<UserBookmarks />} />
-                  <Route path="contact" element={<ContactUs />} />
-                  <Route path="contact-us" element={<ContactUs />} />
-                  <Route path="send-news-tip" element={<ContactUs />} />
-                  <Route path="send-tip" element={<ContactUs />} />
-                  <Route path="news-tip" element={<ContactUs />} />
-                  <Route path="news-tips" element={<ContactUs />} />
-                  <Route path="submit-news" element={<ContactUs />} />
-                  <Route path="feedback" element={<ContactUs />} />
-                  <Route path="about" element={<AboutUs />} />
-                  <Route path="about-us" element={<AboutUs />} />
-                  <Route path="disclaimer" element={<Disclaimer />} />
-                  <Route path="copyright-policy" element={<CopyrightPolicy />} />
-                  <Route path="corrections-policy" element={<CorrectionsPolicy />} />
-                  <Route path="editorial-policy" element={<EditorialPolicy />} />
-                  <Route path="terms-and-conditions" element={<TermsAndConditions />} />
-                  <Route path="privacy-policy" element={<PrivacyPolicy />} />
-                  <Route path="*" element={<Home />} />
-                </Route>
-                
-                <Route path="/admin" element={<AdminLayout />}>
-                  <Route index element={<AdminDashboard />} />
-                  <Route path="create" element={<AdminCreateNews />} />
-                  <Route path="edit/:id" element={<AdminCreateNews />} />
-                  <Route path="news" element={<AdminNews />} />
-                  <Route path="analytics" element={<AdminAnalytics />} />
-                  <Route path="categories" element={<AdminCategories />} />
-                  <Route path="reporters" element={<AdminReporters />} />
-                  <Route path="media" element={<AdminMedia />} />
-                  <Route path="comments" element={<AdminComments />} />
-                  <Route path="ads" element={<AdminAds />} />
-                  <Route path="seo" element={<AdminSEO />} />
-                  <Route path="settings" element={<AdminSettings />} />
-                </Route>
-              </Routes>
-            </Suspense>
-          </Router>
+          <NotificationProvider>
+            <Router>
+              <ScrollToTop />
+              <NotificationPromptCard />
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={<MainLayout />}>
+                    <Route index element={<Home />} />
+                    <Route path="latest-news" element={<LatestNewsPage />} />
+                    <Route path="article/:slug" element={<ArticleDetail />} />
+                    <Route path="category/:slug" element={<CategoryPage />} />
+                    <Route path="search" element={<SearchResults />} />
+                    <Route path="bookmarks" element={<UserBookmarks />} />
+                    <Route path="contact" element={<ContactUs />} />
+                    <Route path="contact-us" element={<ContactUs />} />
+                    <Route path="send-news-tip" element={<ContactUs />} />
+                    <Route path="send-tip" element={<ContactUs />} />
+                    <Route path="news-tip" element={<ContactUs />} />
+                    <Route path="news-tips" element={<ContactUs />} />
+                    <Route path="submit-news" element={<ContactUs />} />
+                    <Route path="feedback" element={<ContactUs />} />
+                    <Route path="about" element={<AboutUs />} />
+                    <Route path="about-us" element={<AboutUs />} />
+                    <Route path="disclaimer" element={<Disclaimer />} />
+                    <Route path="copyright-policy" element={<CopyrightPolicy />} />
+                    <Route path="corrections-policy" element={<CorrectionsPolicy />} />
+                    <Route path="editorial-policy" element={<EditorialPolicy />} />
+                    <Route path="terms-and-conditions" element={<TermsAndConditions />} />
+                    <Route path="privacy-policy" element={<PrivacyPolicy />} />
+                    <Route path="*" element={<Home />} />
+                  </Route>
+                  
+                  <Route path="/admin" element={<AdminLayout />}>
+                    <Route index element={<AdminDashboard />} />
+                    <Route path="live-updates" element={<AdminLiveUpdates />} />
+                    <Route path="create" element={<AdminCreateNews />} />
+                    <Route path="edit/:id" element={<AdminCreateNews />} />
+                    <Route path="news" element={<AdminNews />} />
+                    <Route path="analytics" element={<AdminAnalytics />} />
+                    <Route path="categories" element={<AdminCategories />} />
+                    <Route path="reporters" element={<AdminReporters />} />
+                    <Route path="media" element={<AdminMedia />} />
+                    <Route path="comments" element={<AdminComments />} />
+                    <Route path="ads" element={<AdminAds />} />
+                    <Route path="seo" element={<AdminSEO />} />
+                    <Route path="settings" element={<AdminSettings />} />
+                  </Route>
+                </Routes>
+              </Suspense>
+            </Router>
+          </NotificationProvider>
         </NewsProvider>
       </WeatherProvider>
     </ErrorBoundary>

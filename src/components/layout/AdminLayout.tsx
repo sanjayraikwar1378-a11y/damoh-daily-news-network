@@ -19,7 +19,8 @@ import {
   Shield,
   LogOut,
   Sparkles,
-  Loader2
+  Loader2,
+  Radio
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "motion/react"
@@ -84,6 +85,7 @@ export function AdminLayout() {
 
   const navItems = [
     { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
+    { label: "Live Updates", path: "/admin/live-updates", icon: Radio },
     { label: "Write News", path: "/admin/create", icon: PlusCircle },
     { label: "All News Articles", path: "/admin/news", icon: FileText },
     { label: "Analytics & Traffic", path: "/admin/analytics", icon: BarChart3 },

@@ -88,6 +88,51 @@
         "status": { "type": "string", "enum": ["new", "read", "resolved"] }
       },
       "required": ["fullName", "mobileNumber", "email", "message", "status"]
+    },
+    "live_updates": {
+      "title": "Live Updates",
+      "description": "Short real-time quick news updates for live ticker and floating feed",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "imageUrl": { "type": "string" },
+        "publishedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "isUrgent": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "authorName": { "type": "string" }
+      },
+      "required": ["content", "publishedAt", "isActive"]
+    },
+    "notifications": {
+      "title": "News Notifications",
+      "description": "Push and in-app broadcast notifications collection",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "priority": { "type": "string", "enum": ["normal", "breaking", "important", "urgent"] },
+        "category": { "type": "string", "enum": ["breaking", "important", "local", "live_update"] },
+        "articleId": { "type": "string" },
+        "articleSlug": { "type": "string" },
+        "liveUpdateId": { "type": "string" },
+        "targetUrl": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "body", "priority", "category", "createdAt"]
+    },
+    "fcm_tokens": {
+      "title": "Device Push Tokens",
+      "description": "Registered browser push tokens for Web Push / FCM",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["token"]
     }
   },
   "firestore": {
@@ -97,6 +142,9 @@
     "/settings/{settingId}": { "schema": "settings", "description": "System settings" },
     "/media/{mediaId}": { "schema": "media", "description": "Media library" },
     "/analytics_events/{eventId}": { "schema": "analytics_events", "description": "Engagement analytics events" },
-    "/messages/{messageId}": { "schema": "messages", "description": "Contact messages and news tips" }
+    "/messages/{messageId}": { "schema": "messages", "description": "Contact messages and news tips" },
+    "/live_updates/{updateId}": { "schema": "live_updates", "description": "Live breaking quick updates collection" },
+    "/notifications/{notificationId}": { "schema": "notifications", "description": "Broadcast news notification messages" },
+    "/fcm_tokens/{tokenId}": { "schema": "fcm_tokens", "description": "Browser push subscription tokens" }
   }
 }
