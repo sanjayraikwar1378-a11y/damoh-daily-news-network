@@ -52,9 +52,11 @@ self.addEventListener('activate', (event) => {
 // 3. Handle Firebase Cloud Messaging Background Messages
 if (messaging) {
   messaging.onBackgroundMessage((payload) => {
+    console.log('[SW] Firebase onBackgroundMessage received:', payload);
     const notificationTitle = payload.notification?.title || payload.data?.title || 'दमोह डेली न्यूज़ नेटवर्क';
     const notificationBody = payload.notification?.body || payload.data?.body || 'ताज़ा समाचार एवं अपडेट्स';
-    const targetUrl = payload.data?.url || payload.data?.targetUrl || (payload.data?.articleSlug ? `/article/${payload.data.articleSlug}` : '/');
+    const rawTargetUrl = payload.data?.url || payload.data?.targetUrl || (payload.data?.articleSlug ? `/article/${payload.data.articleSlug}` : '/');
+    const targetUrl = new URL(rawTargetUrl, self.location.origin).href;
     const imageUrl = payload.notification?.image || payload.data?.imageUrl || payload.data?.image || undefined;
 
     const notificationOptions = {
@@ -62,7 +64,7 @@ if (messaging) {
       icon: '/icon-192-v2.png',
       badge: '/favicon-32x32-v2.png',
       image: imageUrl,
-      tag: payload.data?.tag || `ddn-${Date.now()}`,
+      tag: payload.data?.tag || `ddn-${payload.data?.id || Date.now()}`,
       renotify: true,
       data: {
         url: targetUrl
@@ -90,7 +92,8 @@ self.addEventListener('push', (event) => {
 
     const title = payload.title || payload.notification?.title || 'दमोह डेली न्यूज़ नेटवर्क';
     const body = payload.body || payload.notification?.body || 'ताज़ा समाचार एवं अपडेट्स';
-    const targetUrl = payload.url || payload.targetUrl || payload.data?.url || '/';
+    const rawTargetUrl = payload.url || payload.targetUrl || payload.data?.url || '/';
+    const targetUrl = new URL(rawTargetUrl, self.location.origin).href;
     const imageUrl = payload.imageUrl || payload.image || payload.notification?.image || undefined;
 
     const options = {
@@ -98,7 +101,7 @@ self.addEventListener('push', (event) => {
       icon: '/icon-192-v2.png',
       badge: '/favicon-32x32-v2.png',
       image: imageUrl,
-      tag: payload.tag || 'damoh-daily-news',
+      tag: payload.tag || `ddn-${Date.now()}`,
       renotify: true,
       data: {
         url: targetUrl
@@ -117,7 +120,7 @@ self.addEventListener('push', (event) => {
         body: text,
         icon: '/icon-192-v2.png',
         badge: '/favicon-32x32-v2.png',
-        data: { url: '/' }
+        data: { url: self.location.origin }
       })
     );
   }
@@ -131,7 +134,8 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  const targetUrl = event.notification.data?.url || '/';
+  const rawUrl = event.notification.data?.url || '/';
+  const targetUrl = new URL(rawUrl, self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {

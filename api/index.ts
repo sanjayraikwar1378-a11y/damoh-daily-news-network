@@ -9,6 +9,10 @@ import {
   destroyCloudinaryImage, 
   extractCloudinaryPublicId 
 } from "./liveUpdatesCleanup";
+import { 
+  dispatchFCMPushNotification, 
+  fetchRegisteredFCMTokens 
+} from "./fcmPush";
 
 const INITIAL_CATEGORIES = [
   { id: 'c1', name: 'दमोह (Damoh)', slug: 'damoh' },
@@ -343,7 +347,7 @@ async function getDefaultShareImageBuffer(): Promise<Buffer> {
   return Buffer.from("");
 }
 
-async function createResizedImageBuffer(inputBuffer: Buffer, targetMime: 'image/jpeg' | 'image/png' = 'image/jpeg'): Promise<Buffer> {
+async function createResizedImageBuffer(inputBuffer: Buffer, _targetMime: 'image/jpeg' | 'image/png' = 'image/jpeg'): Promise<Buffer> {
   try {
     if (!inputBuffer || inputBuffer.length === 0) {
       return await getDefaultShareImageBuffer();
@@ -354,7 +358,7 @@ async function createResizedImageBuffer(inputBuffer: Buffer, targetMime: 'image/
 
     // 1. Create background canvas:
     // Resize input image to 1200x630 with 'cover', apply Gaussian blur and subtle dimming/saturation boost
-    // so it forms a seamless, natural extension of the original image with no black/white letterbox bars.
+    // so it forms a seamless, natural extension of the original image with zero black/white letterbox bars.
     const backgroundBuffer = await sharp(inputBuffer)
       .rotate() // Automatically orient based on EXIF metadata
       .resize(TARGET_WIDTH, TARGET_HEIGHT, {
@@ -363,13 +367,13 @@ async function createResizedImageBuffer(inputBuffer: Buffer, targetMime: 'image/
       })
       .blur(28) // High quality smooth Gaussian blur
       .modulate({
-        brightness: 0.82, // Subtle dimming for focus on foreground
+        brightness: 0.80, // Subtle dimming for focus on foreground
         saturation: 1.15  // Rich matching ambient color palette
       })
       .toBuffer();
 
     // 2. Create foreground image:
-    // Resize original image with 'inside' so 100% of the original image is preserved without any cropping,
+    // Resize original image with 'inside' so 100% of the original photo is preserved without any cropping,
     // stretching, zooming, or distortion.
     const foregroundBuffer = await sharp(inputBuffer)
       .rotate() // Automatically orient based on EXIF metadata
@@ -388,7 +392,7 @@ async function createResizedImageBuffer(inputBuffer: Buffer, targetMime: 'image/
         }
       ])
       .jpeg({
-        quality: 90,
+        quality: 86,
         mozjpeg: true,
         progressive: true
       })
@@ -412,7 +416,13 @@ function getArticleImageUrl(article: Record<string, any> | null, slug: string, b
     return `${baseUrl}/social-preview.jpg`;
   }
 
-  const safeSlug = encodeURIComponent(slug || article.slug || article.id || "article");
+  const rawSlug = article.slug || slug || article.id || "article";
+  let decodedSlug = rawSlug;
+  try {
+    decodedSlug = decodeURIComponent(rawSlug);
+  } catch {}
+
+  const safeSlug = encodeURIComponent(decodedSlug);
   return `${baseUrl}/api/article-image/${safeSlug}.jpg`;
 }
 
@@ -739,6 +749,10 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
 
   cleanHtml = cleanHtml.replace('<div id="root"></div>', serverRenderedBody);
 
+  // Inject meta tags right at the top of <head> for maximum crawler priority
+  if (cleanHtml.includes('<head>')) {
+    return cleanHtml.replace('<head>', `<head>\n${metaTagsHtml}`);
+  }
   return cleanHtml.replace('</head>', `${metaTagsHtml}\n</head>`);
 }
 
@@ -757,7 +771,7 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
   };
 
   const metaTagsHtml = `
-    <!-- Default Site Meta Tags -->
+    <!-- Default Site Meta Tags (High Priority for Crawlers) -->
     <title>${title}</title>
     <meta name="description" content="${description}">
     <link rel="canonical" href="${canonicalUrl}">
@@ -796,6 +810,9 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
     .replace(/<meta\s+name=["']twitter:[\s\S]*?["'][\s\S]*?>/gi, '')
     .replace(/<link\s+rel=["']canonical["'][\s\S]*?>/gi, '');
 
+  if (cleanHtml.includes('<head>')) {
+    return cleanHtml.replace('<head>', `<head>\n${metaTagsHtml}`);
+  }
   return cleanHtml.replace('</head>', `${metaTagsHtml}\n</head>`);
 }
 
@@ -903,6 +920,81 @@ export function createExpressApp() {
     } catch (err: any) {
       console.warn("[LiveUpdates Cleanup] Error deleting image asset:", err);
       return res.status(500).json({ success: false, error: err?.message });
+    }
+  });
+
+  // Server-Side Firebase Cloud Messaging (FCM) Push Broadcast Endpoint
+  app.post("/api/send-push", async (req, res) => {
+    try {
+      const { 
+        id, 
+        title, 
+        body, 
+        priority, 
+        category, 
+        articleId, 
+        articleSlug, 
+        liveUpdateId, 
+        targetUrl, 
+        imageUrl 
+      } = req.body || {};
+
+      if (!title || !body) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Push notification requires 'title' and 'body' fields." 
+        });
+      }
+
+      const result = await dispatchFCMPushNotification({
+        id,
+        title,
+        body,
+        priority,
+        category,
+        articleId,
+        articleSlug,
+        liveUpdateId,
+        targetUrl,
+        imageUrl
+      });
+
+      console.log(`[FCM Server] Push broadcast result:`, result);
+      return res.status(200).json(result);
+    } catch (err: any) {
+      console.error("[FCM Server] Send push error:", err);
+      return res.status(500).json({ 
+        success: false, 
+        error: err?.message || "Failed to dispatch push notification" 
+      });
+    }
+  });
+
+  // Diagnostic Endpoint for FCM Token Registration & Server Status
+  app.get("/api/fcm/status", async (_req, res) => {
+    try {
+      let projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
+      let apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "";
+      const tokens = await fetchRegisteredFCMTokens(projectId, apiKey);
+      
+      const hasServiceAccount = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_APPLICATION_CREDENTIALS);
+
+      return res.status(200).json({
+        status: "ok",
+        projectId,
+        registeredTokensCount: tokens.length,
+        devicesBreakdown: {
+          android: tokens.filter(t => t.platform === "android").length,
+          ios: tokens.filter(t => t.platform === "ios").length,
+          web: tokens.filter(t => t.platform === "web").length
+        },
+        hasServiceAccount,
+        supportedMethods: [
+          hasServiceAccount ? "FCM HTTP v1 (OAuth2)" : null
+        ].filter(Boolean)
+      });
+    } catch (err: any) {
+      return res.status(500).json({ status: "error", error: err?.message });
     }
   });
 
@@ -1023,25 +1115,58 @@ export function createExpressApp() {
       const article = await getArticleBySlug(slug);
 
       if (article) {
-        const rawImage = article.imageUrl || article.ogImage || article.featuredImage || article.image || article.photoUrl;
+        // Check all possible image fields in Firestore document
+        const rawImage = 
+          article.imageUrl || 
+          article.ogImage || 
+          article.featuredImage || 
+          article.image || 
+          article.photoUrl || 
+          article.thumbnailUrl || 
+          article.coverImage || 
+          article.mediaUrl || 
+          (Array.isArray(article.images) && article.images[0]) ||
+          (Array.isArray(article.gallery) && article.gallery[0]);
 
-        // Case A: Base64 Data URI
-        if (rawImage && typeof rawImage === "string" && rawImage.toLowerCase().startsWith("data:")) {
-          const match = rawImage.match(/^data:(image\/[a-zA-Z+-]+);base64,(.+)$/);
-          if (match) {
-            const rawBuffer = Buffer.from(match[2], "base64");
-            const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
-            const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
-            serverImageBufferCache.set(cleanCacheKey, entry);
+        // Case A: Base64 Data URI (e.g. data:image/jpeg;base64,...)
+        if (rawImage && typeof rawImage === "string" && rawImage.trim().toLowerCase().startsWith("data:image/")) {
+          const commaIdx = rawImage.indexOf(",");
+          if (commaIdx !== -1) {
+            const base64Data = rawImage.substring(commaIdx + 1).trim();
+            const rawBuffer = Buffer.from(base64Data, "base64");
+            if (rawBuffer && rawBuffer.length > 0) {
+              const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
+              const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
+              serverImageBufferCache.set(cleanCacheKey, entry);
 
-            res.setHeader("Content-Type", "image/jpeg");
-            res.setHeader("Content-Length", optimizedBuffer.length);
-            res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
-            return res.status(200).send(optimizedBuffer);
+              res.setHeader("Content-Type", "image/jpeg");
+              res.setHeader("Content-Length", optimizedBuffer.length);
+              res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+              return res.status(200).send(optimizedBuffer);
+            }
           }
         }
 
-        // Case B: Remote HTTPS URL (Cloudinary, Unsplash, Firebase Storage, etc.)
+        // Case B: Raw Base64 string (without data: prefix)
+        if (rawImage && typeof rawImage === "string" && !rawImage.startsWith("http") && !rawImage.startsWith("//") && (rawImage.startsWith("/9j/") || rawImage.startsWith("iVBORw") || rawImage.startsWith("UklGR") || rawImage.length > 500)) {
+          try {
+            const rawBuffer = Buffer.from(rawImage.trim(), "base64");
+            if (rawBuffer && rawBuffer.length > 0) {
+              const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
+              const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
+              serverImageBufferCache.set(cleanCacheKey, entry);
+
+              res.setHeader("Content-Type", "image/jpeg");
+              res.setHeader("Content-Length", optimizedBuffer.length);
+              res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+              return res.status(200).send(optimizedBuffer);
+            }
+          } catch (b64Err) {
+            console.warn("Error parsing raw base64 image:", b64Err);
+          }
+        }
+
+        // Case C: Remote HTTPS URL (Cloudinary, Unsplash, Firebase Storage, Google CDN, etc.)
         if (rawImage && typeof rawImage === "string" && rawImage.trim() && !rawImage.toLowerCase().startsWith("data:")) {
           let url = rawImage.trim();
           if (url.startsWith("//")) url = `https:${url}`;
@@ -1049,20 +1174,25 @@ export function createExpressApp() {
           if (url.startsWith("https://")) {
             try {
               const fetchRes = await fetch(url, { 
-                headers: { "User-Agent": "DamohDailyNews-ImageProxy/1.0" },
-                signal: AbortSignal.timeout(6000)
+                headers: { 
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+                },
+                signal: AbortSignal.timeout(8000)
               });
               if (fetchRes.ok) {
                 const arrayBuf = await fetchRes.arrayBuffer();
                 const rawBuffer = Buffer.from(arrayBuf);
-                const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
-                const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
-                serverImageBufferCache.set(cleanCacheKey, entry);
+                if (rawBuffer && rawBuffer.length > 0) {
+                  const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
+                  const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
+                  serverImageBufferCache.set(cleanCacheKey, entry);
 
-                res.setHeader("Content-Type", "image/jpeg");
-                res.setHeader("Content-Length", optimizedBuffer.length);
-                res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
-                return res.status(200).send(optimizedBuffer);
+                  res.setHeader("Content-Type", "image/jpeg");
+                  res.setHeader("Content-Length", optimizedBuffer.length);
+                  res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+                  return res.status(200).send(optimizedBuffer);
+                }
               }
             } catch (fetchErr) {
               console.warn("Error fetching remote article image on proxy:", fetchErr);
@@ -1070,27 +1200,39 @@ export function createExpressApp() {
           }
         }
 
-        // Case C: YouTube Thumbnail
-        if (article.youtubeUrl && typeof article.youtubeUrl === "string") {
-          const ytMatch = article.youtubeUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
+        // Case D: YouTube Thumbnail
+        const videoSource = article.youtubeUrl || article.videoUrl;
+        if (videoSource && typeof videoSource === "string") {
+          const ytMatch = videoSource.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|live\/))([\w-]{11})/);
           if (ytMatch && ytMatch[1]) {
-            try {
-              const ytUrl = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
-              const ytRes = await fetch(ytUrl, { signal: AbortSignal.timeout(5000) });
-              if (ytRes.ok) {
-                const arrayBuf = await ytRes.arrayBuffer();
-                const rawBuffer = Buffer.from(arrayBuf);
-                const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
-                const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
-                serverImageBufferCache.set(cleanCacheKey, entry);
+            const ytThumbUrls = [
+              `https://img.youtube.com/vi/${ytMatch[1]}/maxresdefault.jpg`,
+              `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`,
+              `https://img.youtube.com/vi/${ytMatch[1]}/0.jpg`
+            ];
+            for (const ytUrl of ytThumbUrls) {
+              try {
+                const ytRes = await fetch(ytUrl, { 
+                  headers: { "User-Agent": "Mozilla/5.0" },
+                  signal: AbortSignal.timeout(5000) 
+                });
+                if (ytRes.ok) {
+                  const arrayBuf = await ytRes.arrayBuffer();
+                  const rawBuffer = Buffer.from(arrayBuf);
+                  if (rawBuffer && rawBuffer.length > 1000) { // Check that it is not the 120-byte 404 placeholder
+                    const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
+                    const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
+                    serverImageBufferCache.set(cleanCacheKey, entry);
 
-                res.setHeader("Content-Type", "image/jpeg");
-                res.setHeader("Content-Length", optimizedBuffer.length);
-                res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
-                return res.status(200).send(optimizedBuffer);
+                    res.setHeader("Content-Type", "image/jpeg");
+                    res.setHeader("Content-Length", optimizedBuffer.length);
+                    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+                    return res.status(200).send(optimizedBuffer);
+                  }
+                }
+              } catch (ytErr) {
+                // Try next YouTube thumbnail URL
               }
-            } catch (ytErr) {
-              console.warn("Error fetching YouTube thumbnail:", ytErr);
             }
           }
         }
@@ -1277,6 +1419,14 @@ export function createExpressApp() {
 
   return app;
 }
+
+export {
+  getArticleBySlug,
+  getAllArticlesForFeed,
+  createResizedImageBuffer,
+  injectArticleMetaTags,
+  injectDefaultMetaTags
+};
 
 const app = createExpressApp();
 

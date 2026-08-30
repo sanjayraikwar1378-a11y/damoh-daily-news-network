@@ -33,6 +33,14 @@ import {
   startAfter,
   serverTimestamp 
 } from "firebase/firestore";
+import { 
+  getMessaging, 
+  getToken, 
+  onMessage, 
+  isSupported as isMessagingSupported,
+  Messaging
+} from "firebase/messaging";
+import { getServiceWorkerRegistration } from "./serviceWorker";
 
 // Read Firebase config from environment variables or project defaults
 const firebaseConfig = {
@@ -46,7 +54,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase App
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
@@ -78,6 +86,95 @@ try {
 
 export const db = firestoreInstance;
 
+// Lazy singleton for Firebase Messaging
+let messagingInstance: Messaging | null = null;
+let messagingCheckDone = false;
+
+/**
+ * Returns Firebase Messaging instance safely in supported browser environments
+ */
+export async function getFirebaseMessaging(): Promise<Messaging | null> {
+  if (typeof window === "undefined") return null;
+  if (messagingCheckDone) return messagingInstance;
+
+  try {
+    const supported = await isMessagingSupported();
+    if (supported) {
+      messagingInstance = getMessaging(app);
+      console.log("[FCM] Firebase Cloud Messaging client initialized successfully");
+    } else {
+      console.warn("[FCM] Firebase Messaging is not supported in this browser environment");
+    }
+  } catch (err) {
+    console.warn("[FCM] Firebase Messaging check warning:", err);
+  }
+
+  messagingCheckDone = true;
+  return messagingInstance;
+}
+
+/**
+ * Requests an FCM Registration Token for the current browser/PWA device
+ * and saves it into Firestore fcm_tokens collection.
+ */
+export async function registerFCMDevice(customSwReg?: ServiceWorkerRegistration): Promise<string | null> {
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    return null;
+  }
+  if (Notification.permission !== "granted") {
+    console.log("[FCM] Notification permission not granted yet");
+    return null;
+  }
+
+  try {
+    const messaging = await getFirebaseMessaging();
+    if (!messaging) {
+      return null;
+    }
+
+    const swRegistration = customSwReg || (await getServiceWorkerRegistration());
+    if (!swRegistration) {
+      console.warn("[FCM] Active Service Worker registration required for push token generation");
+      return null;
+    }
+
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || undefined;
+
+    const token = await getToken(messaging, {
+      vapidKey,
+      serviceWorkerRegistration: swRegistration
+    });
+
+    if (!token) {
+      console.warn("[FCM] No FCM registration token returned from Firebase");
+      return null;
+    }
+
+    console.log(`[FCM] Successfully obtained device registration token (${token.slice(0, 12)}...)`);
+
+    // Generate safe Firestore Document ID for this token
+    const safeDocId = token.replace(/[\.\#\$\[\]\/]/g, "_").slice(0, 120);
+    const isAndroid = /android/i.test(navigator.userAgent);
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const platform = isAndroid ? "android" : isIos ? "ios" : "web";
+
+    await setDoc(doc(db, "fcm_tokens", safeDocId), {
+      token,
+      userAgent: navigator.userAgent,
+      platform,
+      active: true,
+      updatedAt: new Date().toISOString(),
+      subscribedAt: new Date().toISOString()
+    }, { merge: true });
+
+    console.log("[FCM] Device token registered to Firestore fcm_tokens collection");
+    return token;
+  } catch (err) {
+    console.warn("[FCM] Device registration token generation error:", err);
+    return null;
+  }
+}
+
 export type { User };
 export { 
   setPersistence,
@@ -104,7 +201,10 @@ export {
   where,
   limit,
   startAfter,
-  serverTimestamp 
+  serverTimestamp,
+  getToken,
+  onMessage,
+  isMessagingSupported
 };
 
 /**

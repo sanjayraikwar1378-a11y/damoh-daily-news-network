@@ -212,12 +212,7 @@ export function ArticleDetail() {
       }
 
       const cleanSlug = article.slug || article.id || slug || ""
-      const isLocalOrPreview = typeof window !== 'undefined' && (
-        window.location.hostname === 'localhost' || 
-        window.location.hostname.includes('ais-') ||
-        window.location.hostname.includes('127.0.0.1')
-      )
-      const canonicalOrigin = isLocalOrPreview ? window.location.origin : 'https://damoh-daily-news-network.vercel.app'
+      const canonicalOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://damoh-daily-news-network.vercel.app'
       const canonicalUrl = `${canonicalOrigin}/article/${cleanSlug}`
       const desc = article.excerpt || article.title
       const img = `${canonicalOrigin}/api/article-image/${encodeURIComponent(cleanSlug)}.jpg`

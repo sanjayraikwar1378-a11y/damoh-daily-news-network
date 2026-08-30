@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react"
-import { Save, CheckCircle, Globe, Phone, Mail, Share2, Shield, Coins, RefreshCw, AlertCircle, Upload, Loader2, Image as ImageIcon } from "lucide-react"
+import { Save, CheckCircle, Globe, Phone, Mail, Share2, Shield, Coins, RefreshCw, AlertCircle, Upload, Loader2, Image as ImageIcon, Bell, Send, Smartphone, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -14,6 +14,62 @@ export function AdminSettings() {
   const [ratesForm, setRatesForm] = useState(marketRates)
   const [saved, setSaved] = useState(false)
   const [isUploadingLogo, setIsUploadingLogo] = useState(false)
+
+  // FCM Diagnostics State
+  const [fcmStatus, setFcmStatus] = useState<any>(null)
+  const [isLoadingFcmStatus, setIsLoadingFcmStatus] = useState(false)
+  const [isSendingTestPush, setIsSendingTestPush] = useState(false)
+  const [testPushResult, setTestPushResult] = useState<any>(null)
+  const [testPushForm, setTestPushForm] = useState({
+    title: "दमोह डेली न्यूज़ - लाइव टेस्ट सूचना",
+    body: "यह दमोह डेली न्यूज़ नेटवर्क की आधिकारिक लाइव पुश नोटिफिकेशन है।",
+    priority: "breaking" as const
+  })
+
+  const loadFcmStatus = async () => {
+    setIsLoadingFcmStatus(true)
+    try {
+      const res = await fetch("/api/fcm/status")
+      if (res.ok) {
+        const data = await res.json()
+        setFcmStatus(data)
+      }
+    } catch (e) {
+      console.warn("Failed to fetch FCM status:", e)
+    } finally {
+      setIsLoadingFcmStatus(false)
+    }
+  }
+
+  useEffect(() => {
+    loadFcmStatus()
+  }, [])
+
+  const handleSendTestPush = async () => {
+    if (!testPushForm.title || !testPushForm.body) return
+    setIsSendingTestPush(true)
+    setTestPushResult(null)
+    try {
+      const res = await fetch("/api/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: testPushForm.title,
+          body: testPushForm.body,
+          priority: testPushForm.priority,
+          category: "breaking",
+          targetUrl: "/"
+        })
+      })
+      const data = await res.json()
+      setTestPushResult(data)
+      loadFcmStatus()
+    } catch (err: any) {
+      setTestPushResult({ success: false, error: err?.message || "Failed to dispatch test push" })
+    } finally {
+      setIsSendingTestPush(false)
+    }
+  }
 
   const isSettingsLoadedRef = useRef(false)
   const isRatesLoadedRef = useRef(false)
@@ -372,6 +428,114 @@ export function AdminSettings() {
               />
             </div>
 
+          </CardContent>
+        </Card>
+
+        {/* FCM HTTP v1 Push Notification System & Live Dispatch Tester */}
+        <Card className="border-red-500/30 dark:border-red-500/20 shadow-sm">
+          <CardHeader className="bg-red-50/50 dark:bg-red-950/20 border-b border-red-200/50 dark:border-red-900/30">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-lg font-bold flex items-center gap-2 text-red-700 dark:text-red-400">
+                  <Bell className="h-5 w-5 text-red-600" /> पुश नोटिफिकेशन सिस्टम व लाइव टेस्ट (FCM HTTP v1)
+                </CardTitle>
+                <CardDescription className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
+                  एंड्रॉइड व वेब सब्सक्राइबर्स के लिए लाइव पुश नोटिफिकेशन स्थिति की जांच एवं टेस्ट ब्रॉडकास्ट करें।
+                </CardDescription>
+              </div>
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm" 
+                onClick={loadFcmStatus}
+                disabled={isLoadingFcmStatus}
+                className="text-xs font-bold gap-1 border-red-300 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950 shrink-0"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 text-red-600 ${isLoadingFcmStatus ? "animate-spin" : ""}`} /> स्थिति रिफ्रेश करें
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5 pt-5">
+            {/* Status Badges & Device Breakdown */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                <span className="text-[11px] font-bold text-zinc-500 uppercase">FCM सर्वर प्रमाणीकरण (Auth)</span>
+                <div className="mt-1 flex items-center gap-2">
+                  {fcmStatus?.hasServiceAccount ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <Check className="h-3 w-3 text-emerald-600" /> सक्रिय (HTTP v1)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                      <AlertCircle className="h-3 w-3 text-amber-600" /> क्रेडेंशियल्स प्रतीक्षारत
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                <span className="text-[11px] font-bold text-zinc-500 uppercase">सक्रिय पंजीकृत डिवाइसेस (Total)</span>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100">
+                    {fcmStatus?.registeredTokensCount ?? 0}
+                  </span>
+                  <span className="text-xs text-zinc-500">टोकन्स (Firestore)</span>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                <span className="text-[11px] font-bold text-zinc-500 uppercase">प्लेटफ़ॉर्म विवरण (Devices)</span>
+                <div className="mt-1 flex items-center gap-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                  <span className="px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800">Android: {fcmStatus?.devicesBreakdown?.android ?? 0}</span>
+                  <span className="px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800">Web: {fcmStatus?.devicesBreakdown?.web ?? 0}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Test Push Sender Form */}
+            <div className="p-4 rounded-xl border border-dashed border-red-300 dark:border-red-900/60 bg-red-50/30 dark:bg-red-950/10 space-y-3">
+              <h4 className="text-xs font-bold uppercase text-red-700 dark:text-red-400 flex items-center gap-1.5">
+                <Send className="h-3.5 w-3.5 text-red-600" /> लाइव टेस्ट नोटिफिकेशन भेजें (Send Live FCM Test)
+              </h4>
+              
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">नोटिफिकेशन शीर्षक (Title)</label>
+                <Input 
+                  value={testPushForm.title} 
+                  onChange={(e) => setTestPushForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="दमोह डेली न्यूज़ - लाइव टेस्ट"
+                  className="bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">नोटिफिकेशन संदेश (Message Body)</label>
+                <Input 
+                  value={testPushForm.body} 
+                  onChange={(e) => setTestPushForm(f => ({ ...f, body: e.target.value }))}
+                  placeholder="यह एक परीक्षण पुश संदेश है।"
+                  className="bg-white dark:bg-zinc-950"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-3">
+                <Button 
+                  type="button" 
+                  onClick={handleSendTestPush}
+                  disabled={isSendingTestPush || !testPushForm.title || !testPushForm.body}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold gap-2 text-xs"
+                >
+                  {isSendingTestPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}
+                  {isSendingTestPush ? "भेजा जा रहा है..." : "सभी डिवाइसेस पर टेस्ट पुश भेजें"}
+                </Button>
+
+                {testPushResult && (
+                  <div className={`text-xs font-medium px-3 py-1.5 rounded-lg ${testPushResult.success ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"}`}>
+                    {testPushResult.message || (testPushResult.success ? "सफलतापूर्वक भेजा गया" : testPushResult.error)}
+                  </div>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
 

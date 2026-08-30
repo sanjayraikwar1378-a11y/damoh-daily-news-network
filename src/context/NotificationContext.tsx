@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
-import { db } from "@/lib/firebase";
-import { getServiceWorkerRegistration } from "@/lib/serviceWorker";
+import { 
+  db, 
+  getFirebaseMessaging, 
+  registerFCMDevice, 
+  onMessage 
+} from "@/lib/firebase";
+import { 
+  getServiceWorkerRegistration, 
+  initServiceWorker 
+} from "@/lib/serviceWorker";
 import { 
   collection, 
   addDoc, 
@@ -8,9 +16,7 @@ import {
   query, 
   orderBy, 
   limit, 
-  serverTimestamp, 
-  doc, 
-  setDoc 
+  serverTimestamp 
 } from "firebase/firestore";
 import { NewsNotification, NotificationPreferences, NotificationPriority, NotificationCategory } from "@/data/mock";
 
@@ -125,6 +131,50 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const hasInitializedRef = useRef(false);
   const initialMountTimeRef = useRef(Date.now());
 
+  // Dispatch Browser Notification helper (declared early for use across hooks)
+  const dispatchBrowserNotification = useCallback((item: NewsNotification, currentPrefs: NotificationPreferences) => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    if (!currentPrefs.browserPush) return;
+
+    // Check category preferences
+    if (item.category === "breaking" && !currentPrefs.breaking) return;
+    if (item.category === "important" && !currentPrefs.important) return;
+    if (item.category === "local" && !currentPrefs.local) return;
+    if (item.category === "live_update" && !currentPrefs.liveUpdates) return;
+
+    const notifTitle = item.priority === "urgent" 
+      ? `🚨 ${item.title}`
+      : item.priority === "breaking" 
+      ? `🔴 ब्रेकिंग: ${item.title}` 
+      : item.title;
+
+    const options: any = {
+      body: item.body,
+      icon: "/icon-192-v2.png",
+      badge: "/favicon-32x32-v2.png",
+      image: item.imageUrl || undefined,
+      tag: `news-${item.id}`,
+      data: { url: item.targetUrl || "/" }
+    };
+
+    if (swRegistrationRef.current && "showNotification" in swRegistrationRef.current) {
+      swRegistrationRef.current.showNotification(notifTitle, options).catch(() => {
+        try {
+          new Notification(notifTitle, options);
+        } catch {
+          // ignore
+        }
+      });
+    } else {
+      try {
+        new Notification(notifTitle, options);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   // Save preferences
   useEffect(() => {
     try {
@@ -152,7 +202,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [deletedIds]);
 
-  // Consume Canonical Service Worker registration on mount
+  // Consume Canonical Service Worker registration and initialize FCM on mount
   useEffect(() => {
     getServiceWorkerRegistration()
       .then((reg) => {
@@ -165,12 +215,64 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       });
 
     if (typeof window !== "undefined" && "Notification" in window) {
-      setPermissionStatus(Notification.permission);
-      if (Notification.permission === "granted") {
+      const currentPerm = Notification.permission;
+      setPermissionStatus(currentPerm);
+      if (currentPerm === "granted") {
         setPreferences(prev => ({ ...prev, browserPush: true }));
+        // Defer real FCM token registration in background
+        setTimeout(() => {
+          registerFCMDevice(swRegistrationRef.current || undefined).catch((e) => {
+            console.warn("[Notifications] FCM device background registration check:", e);
+          });
+        }, 1500);
       }
     }
   }, []);
+
+  // Listen to incoming foreground FCM messages
+  useEffect(() => {
+    let unsubscribeFCM = () => {};
+    let isMounted = true;
+
+    getFirebaseMessaging().then((messaging) => {
+      if (!messaging || !isMounted) return;
+
+      try {
+        unsubscribeFCM = onMessage(messaging, (payload) => {
+          console.log("[FCM] Foreground push message received:", payload);
+          const notifTitle = payload.notification?.title || payload.data?.title || "दमोह डेली न्यूज़ नेटवर्क";
+          const notifBody = payload.notification?.body || payload.data?.body || "ताज़ा समाचार";
+          const targetUrl = payload.data?.url || payload.data?.targetUrl || (payload.data?.articleSlug ? `/article/${payload.data.articleSlug}` : "/");
+          const imageUrl = payload.notification?.image || payload.data?.imageUrl || payload.data?.image;
+
+          const item: NewsNotification = {
+            id: payload.data?.id || `push_${Date.now()}`,
+            title: notifTitle,
+            body: notifBody,
+            priority: (payload.data?.priority as NotificationPriority) || "normal",
+            category: (payload.data?.category as NotificationCategory) || "local",
+            articleId: payload.data?.articleId || undefined,
+            articleSlug: payload.data?.articleSlug || undefined,
+            liveUpdateId: payload.data?.liveUpdateId || undefined,
+            targetUrl,
+            imageUrl: imageUrl || undefined,
+            createdAt: new Date().toISOString(),
+            isRead: false
+          };
+
+          setNotifications(prev => [item, ...prev.filter(n => n.id !== item.id)]);
+          dispatchBrowserNotification(item, preferences);
+        });
+      } catch (fcmErr) {
+        console.warn("[FCM] onMessage registration warning:", fcmErr);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribeFCM();
+    };
+  }, [preferences, dispatchBrowserNotification]);
 
   // Sync Notifications from Firestore (Deferred non-blocking to prevent initial mount congestion on mobile)
   useEffect(() => {
@@ -241,51 +343,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (timer) clearTimeout(timer);
       unsubscribe();
     };
-  }, [preferences, readIds, deletedIds]);
-
-  // Dispatch Browser Notification helper
-  const dispatchBrowserNotification = useCallback((item: NewsNotification, currentPrefs: NotificationPreferences) => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
-    if (!currentPrefs.browserPush) return;
-
-    // Check category preferences
-    if (item.category === "breaking" && !currentPrefs.breaking) return;
-    if (item.category === "important" && !currentPrefs.important) return;
-    if (item.category === "local" && !currentPrefs.local) return;
-    if (item.category === "live_update" && !currentPrefs.liveUpdates) return;
-
-    const notifTitle = item.priority === "urgent" 
-      ? `🚨 ${item.title}`
-      : item.priority === "breaking" 
-      ? `🔴 ब्रेकिंग: ${item.title}` 
-      : item.title;
-
-    const options: any = {
-      body: item.body,
-      icon: "/icon-192-v2.png",
-      badge: "/favicon-32x32-v2.png",
-      image: item.imageUrl || undefined,
-      tag: `news-${item.id}`,
-      data: { url: item.targetUrl || "/" }
-    };
-
-    if (swRegistrationRef.current && "showNotification" in swRegistrationRef.current) {
-      swRegistrationRef.current.showNotification(notifTitle, options).catch(() => {
-        try {
-          new Notification(notifTitle, options);
-        } catch {
-          // ignore
-        }
-      });
-    } else {
-      try {
-        new Notification(notifTitle, options);
-      } catch {
-        // ignore
-      }
-    }
-  }, []);
+  }, [preferences, readIds, deletedIds, dispatchBrowserNotification]);
 
   // In-Site Permission Card: Show politely after user engagement (10s delay or user interaction)
   useEffect(() => {
@@ -328,28 +386,34 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         setPreferences(prev => ({ ...prev, browserPush: true }));
         setShowPromptCard(false);
 
-        // Store client push registration record to Firestore
-        try {
-          const userAgent = navigator.userAgent;
-          const tokenDocId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-          await setDoc(doc(db, "fcm_tokens", tokenDocId), {
-            token: tokenDocId,
-            userAgent,
-            subscribedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-        } catch (e) {
-          console.warn("[Notifications] Token storage warning:", e);
+        // 1. Ensure Canonical Service Worker is registered
+        const swReg = await initServiceWorker();
+        if (swReg) {
+          swRegistrationRef.current = swReg;
         }
 
-        // Show welcome confirmation notification
-        if (swRegistrationRef.current && "showNotification" in swRegistrationRef.current) {
-          swRegistrationRef.current.showNotification("दमोह डेली न्यूज़ नेटवर्क", {
-            body: "धन्यवाद! अब आपको दमोह और मध्य प्रदेश की ताज़ा व ब्रेकिंग खबरें तुरंत प्राप्त होंगी।",
-            icon: "/icon-192-v2.png",
-            badge: "/favicon-32x32-v2.png",
-            data: { url: "/" }
-          }).catch(() => {});
+        // 2. Generate and store real FCM Device Registration Token
+        const fcmToken = await registerFCMDevice(swReg || undefined);
+        console.log(`[FCM] Device registration successful (Token: ${fcmToken ? `${fcmToken.slice(0, 12)}...` : "acquired"})`);
+
+        // 3. Show immediate welcome confirmation notification
+        const welcomeTitle = "दमोह डेली न्यूज़ नेटवर्क";
+        const welcomeOptions: any = {
+          body: "धन्यवाद! अब आपको दमोह और मध्य प्रदेश की ताज़ा व ब्रेकिंग खबरें तुरंत प्राप्त होंगी।",
+          icon: "/icon-192-v2.png",
+          badge: "/favicon-32x32-v2.png",
+          tag: "welcome-ddn",
+          data: { url: "/" }
+        };
+
+        if (swReg && "showNotification" in swReg) {
+          swReg.showNotification(welcomeTitle, welcomeOptions).catch(() => {});
+        } else {
+          try {
+            new Notification(welcomeTitle, welcomeOptions);
+          } catch {
+            // ignore
+          }
         }
 
         setIsSubscribing(false);
@@ -421,6 +485,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     imageUrl?: string;
   }): Promise<string | null> => {
     try {
+      const targetUrl = payload.targetUrl || (payload.articleSlug ? `/article/${payload.articleSlug}` : "/");
       const docData = {
         title: payload.title.trim(),
         body: payload.body.trim(),
@@ -429,27 +494,55 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         articleId: payload.articleId || null,
         articleSlug: payload.articleSlug || null,
         liveUpdateId: payload.liveUpdateId || null,
-        targetUrl: payload.targetUrl || (payload.articleSlug ? `/article/${payload.articleSlug}` : "/"),
+        targetUrl,
         imageUrl: payload.imageUrl || null,
         createdAt: new Date().toISOString(),
         serverTimestamp: serverTimestamp()
       };
 
+      // 1. Publish to Firestore notifications collection for in-app history & bell badge
       const docRef = await addDoc(collection(db, "notifications"), docData);
-      console.log(`[Notifications] Broadcast notification published successfully: ${docRef.id}`);
+      console.log(`[Notifications] Broadcast notification published to Firestore: ${docRef.id}`);
+
+      // 2. Dispatch Server-Side Firebase Cloud Messaging (FCM) Push to all registered device tokens
+      try {
+        const response = await fetch("/api/send-push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...docData,
+            id: docRef.id
+          })
+        });
+
+        if (response.ok) {
+          const pushResult = await response.json();
+          console.log("[FCM] Push dispatch result:", pushResult);
+        } else {
+          console.warn(`[FCM] Push dispatch response status: ${response.status}`);
+        }
+      } catch (pushErr) {
+        console.warn("[FCM] Server push dispatch network warning (Firestore fallback active):", pushErr);
+      }
+
       return docRef.id;
     } catch (err: any) {
-      console.error("[Notifications] Error publishing notification to Firestore:", err);
+      console.error("[Notifications] Error publishing notification:", err);
       throw err;
     }
   }, []);
 
   // Test Notification
   const testNotification = useCallback(async () => {
+    if (Notification.permission !== "granted") {
+      const granted = await requestPushPermission();
+      if (!granted) return;
+    }
+
     const testItem: NewsNotification = {
       id: `test-${Date.now()}`,
       title: "परीक्षण सूचना (Test Notification)",
-      body: "यह दमोह डेली न्यूज़ का लाइव टेस्ट नोटिफिकेशन है। आपका सिस्टम सफलतापूर्वक सक्रिय है।",
+      body: "यह दमोह डेली न्यूज़ का लाइव टेस्ट नोटिफिकेशन है। आपका पुश नोटिफिकेशन सिस्टम सक्रिय है।",
       priority: "breaking",
       category: "breaking",
       targetUrl: "/",
@@ -457,10 +550,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       isRead: false
     };
 
-    if (Notification.permission === "granted") {
-      dispatchBrowserNotification(testItem, preferences);
-    } else {
-      await requestPushPermission();
+    dispatchBrowserNotification(testItem, { ...preferences, browserPush: true });
+
+    // Also trigger server-side FCM dispatch to broadcast to real registered device tokens
+    try {
+      await fetch("/api/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(testItem)
+      });
+    } catch (e) {
+      console.warn("[Notifications] Test push broadcast check:", e);
     }
   }, [preferences, dispatchBrowserNotification, requestPushPermission]);
 
