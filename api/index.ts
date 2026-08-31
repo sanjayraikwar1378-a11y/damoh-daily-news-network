@@ -2,17 +2,10 @@ import express from "express";
 import path from "path";
 import crypto from "crypto";
 import fs from "fs";
-import sharp from "sharp";
-import { 
-  startLiveUpdatesCleanupScheduler, 
-  performLiveUpdatesCleanup, 
-  destroyCloudinaryImage, 
-  extractCloudinaryPublicId 
-} from "./liveUpdatesCleanup";
-import { 
-  dispatchFCMPushNotification, 
-  fetchRegisteredFCMTokens 
-} from "./fcmPush";
+
+// ============================================================================
+// CONSTANTS & CATEGORIES
+// ============================================================================
 
 const INITIAL_CATEGORIES = [
   { id: 'c1', name: 'दमोह (Damoh)', slug: 'damoh' },
@@ -44,6 +37,36 @@ const MOCK_ARTICLES_FALLBACK: Array<Record<string, any>> = [
   }
 ];
 
+const LEGACY_SLUG_REDIRECTS: Record<string, string> = {
+  "damoh-nashe-se-doori-hai-zaruri-2-awareness-program-radhika-palace-a1785337946908-a1785337946908": "damoh-nashe-se-doori-hai-zaruri-2-awareness-program-radhika-palace-a1785337946908",
+  "damoh-200-year-old-peepal-tree-fell-near-rani-durgavati-school-a1785339206714-a1785339206714": "damoh-200-year-old-peepal-tree-fell-near-rani-durgavati-school-a1785339206714",
+  "rajya-sabha-public-examinations-amendment-bill-2026-ram-temple-donation-issue-a1785407567753-a1785407567753-a1785407567753": "rajya-sabha-public-examinations-amendment-bill-2026-ram-temple-donation-issue-a1785407567753"
+};
+
+// ============================================================================
+// LAZY SHARP INITIALIZER (Prevents Top-Level Module Crash on Serverless)
+// ============================================================================
+
+let sharpModule: any = null;
+let sharpAttempted = false;
+
+async function getSharp(): Promise<any> {
+  if (sharpAttempted) return sharpModule;
+  sharpAttempted = true;
+  try {
+    const loaded = await import("sharp");
+    sharpModule = loaded.default || loaded;
+  } catch (err) {
+    console.warn("[Server Image] sharp native addon not available in this environment. Falling back to passthrough.", err);
+    sharpModule = null;
+  }
+  return sharpModule;
+}
+
+// ============================================================================
+// FIRESTORE PARSING & HELPERS
+// ============================================================================
+
 function parseFirestoreFields(fields: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
   if (!fields || typeof fields !== 'object') return result;
@@ -58,112 +81,123 @@ function parseFirestoreFields(fields: Record<string, any>): Record<string, any> 
     else if ('nullValue' in val) result[key] = null;
     else if ('arrayValue' in val) {
       result[key] = (val.arrayValue.values || []).map((v: any) => v.stringValue || v);
-    }
-    else if ('mapValue' in val) {
+    } else if ('mapValue' in val) {
       result[key] = parseFirestoreFields(val.mapValue.fields || {});
     }
   }
+
   return result;
 }
 
-// Known legacy / broken slug mappings for server-side permanent 301 redirect
-const LEGACY_SLUG_REDIRECTS: Record<string, string> = {
-  "singrampur-tagra-mohalla-drain-problem-cremation-damoh-rain-a1787301996708-a1787301996708-a1787301996708": "singrampur-tagra-mohalla-drain-problem",
-  "singrampur-tagra-mohalla-drain-problem-cremation-damoh-rain-a1787301996708-a1787301996708": "singrampur-tagra-mohalla-drain-problem",
-  "singrampur-tagra-mohalla-drain-problem-cremation-damoh-rain-a1787301996708": "singrampur-tagra-mohalla-drain-problem",
-  "singrampur-wagra-mahala-drain-problem": "singrampur-tagra-mohalla-drain-problem",
-  "singrampur-wagra-mohalla-drain-problem": "singrampur-tagra-mohalla-drain-problem",
-  "singrampur-tagra-mahala-drain-problem": "singrampur-tagra-mohalla-drain-problem",
-  "singrampur-wagra-mahala-drain": "singrampur-tagra-mohalla-drain-problem",
-  "singrampur-tagra-mohalla-drain": "singrampur-tagra-mohalla-drain-problem",
-};
-
 function stripServerGeneratedSuffixes(slug: string): string {
   if (!slug) return '';
-  let cleaned = slug.trim();
-  if (LEGACY_SLUG_REDIRECTS[cleaned]) return LEGACY_SLUG_REDIRECTS[cleaned];
-  let prev = '';
-  while (prev !== cleaned) {
-    prev = cleaned;
-    cleaned = cleaned
-      .replace(/-a\d{6,}(?=-a\d{6,}|$)/gi, '')
-      .replace(/-a\d{6,}$/gi, '')
-      .replace(/-\d{10,}$/g, '')
-      .replace(/-+$/, '');
-  }
-  if (LEGACY_SLUG_REDIRECTS[cleaned]) return LEGACY_SLUG_REDIRECTS[cleaned];
-  if (cleaned.includes('singrampur') && (cleaned.includes('tagra') || cleaned.includes('wagra') || cleaned.includes('mohalla') || cleaned.includes('mahala') || cleaned.includes('drain'))) {
-    return 'singrampur-tagra-mohalla-drain-problem';
-  }
-  return cleaned;
+  return slug
+    .replace(/-a\d{6,}(?:-a\d{6,})*$/i, '')
+    .replace(/-l\d{6,}(?:-l\d{6,})*$/i, '')
+    .trim();
 }
 
-// Server-side in-memory caches to minimize Firestore REST latency for SSR and crawlers
-const serverArticleCache = new Map<string, { data: Record<string, any> | null; timestamp: number }>();
-const SERVER_ARTICLE_CACHE_TTL = 60 * 1000; // 60 seconds TTL
+function escapeHtml(str: string): string {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
-let serverFeedCache: { data: Array<Record<string, any>>; timestamp: number } | null = null;
-const SERVER_FEED_CACHE_TTL = 60 * 1000; // 60 seconds TTL
+function stripTags(str: string): string {
+  if (!str) return "";
+  return str.replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
+}
+
+function getBaseUrl(req: express.Request): string {
+  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/+$/, "");
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/+$/, "");
+
+  const hostHeader = (req.headers["x-forwarded-host"] as string) || req.headers.host || (process.env.VERCEL_URL ? `${process.env.VERCEL_URL}` : "www.damohdailynewsnetwork.in");
+  const host = hostHeader.split(",")[0].trim();
+
+  let proto = (req.headers["x-forwarded-proto"] as string) || (req.headers["x-forwarded-ssl"] === "on" ? "https" : "");
+  if (proto) {
+    proto = proto.split(",")[0].trim();
+  }
+  if (!proto) {
+    proto = (host.startsWith("localhost") || host.startsWith("127.0.0.1")) ? "http" : "https";
+  }
+  return `${proto}://${host}`;
+}
+
+// In-memory caches for fast responses
+const serverArticleCache = new Map<string, { data: Record<string, any>; timestamp: number }>();
+const SERVER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes TTL
+
+let feedArticlesCache: { data: Array<Record<string, any>>; timestamp: number } | null = null;
+const FEED_CACHE_TTL = 3 * 60 * 1000; // 3 minutes TTL
 
 async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
   const now = Date.now();
-  if (serverFeedCache && (now - serverFeedCache.timestamp < SERVER_FEED_CACHE_TTL)) {
-    return serverFeedCache.data;
+  if (feedArticlesCache && (now - feedArticlesCache.timestamp < FEED_CACHE_TTL)) {
+    return feedArticlesCache.data;
   }
 
   const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
-  const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
 
   try {
-    const res = await fetch(queryUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        structuredQuery: {
-          from: [{ collectionId: "articles" }],
-          orderBy: [{ field: { fieldPath: "publishedAt" }, direction: "DESCENDING" }],
-          limit: 1000
+    const listUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles?pageSize=100`;
+    const response = await fetch(listUrl, { signal: AbortSignal.timeout(6000) });
+
+    if (response.ok) {
+      const data = await response.json();
+      const docs = data.documents || [];
+      const articles: Array<Record<string, any>> = [];
+
+      for (const doc of docs) {
+        if (!doc || !doc.fields) continue;
+        const parsed = parseFirestoreFields(doc.fields);
+        const nameParts = (doc.name || "").split("/");
+        const docId = nameParts[nameParts.length - 1];
+        if (!parsed.id && docId) parsed.id = docId;
+
+        if (parsed.title || parsed.slug) {
+          articles.push(parsed);
         }
-      })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        const articles = data
-          .map((item: any) => item.document ? parseFirestoreFields(item.document.fields) : null)
-          .filter(Boolean);
-        if (articles.length > 0) {
-          serverFeedCache = { data: articles, timestamp: now };
-          return articles;
-        }
+      }
+
+      if (articles.length > 0) {
+        articles.sort((a, b) => {
+          const tA = new Date(a.publishedAt || a.createdAt || 0).getTime();
+          const tB = new Date(b.publishedAt || b.createdAt || 0).getTime();
+          return tB - tA;
+        });
+
+        feedArticlesCache = { data: articles, timestamp: now };
+        return articles;
       }
     }
   } catch (err) {
-    console.error("Error fetching all articles from Firestore REST API:", err);
+    console.warn("Could not fetch articles collection from Firestore for feed:", err);
   }
 
   return MOCK_ARTICLES_FALLBACK;
 }
 
-async function getArticleBySlug(slugInput: string): Promise<Record<string, any> | null> {
-  if (!slugInput) return null;
-  const rawClean = slugInput.trim().split('?')[0].split('#')[0];
-  const cleanSlug = rawClean.replace(/\.jpg$/i, "");
-  let decodedSlug = cleanSlug;
+async function getArticleBySlug(slug: string): Promise<Record<string, any> | null> {
+  if (!slug) return null;
+
+  const rawClean = slug.trim().split('?')[0].split('#')[0].replace(/\.jpg$/i, "");
+  let decodedSlug = rawClean;
   try {
-    decodedSlug = decodeURIComponent(cleanSlug);
-  } catch (e) {
-    // ignore decode error
-  }
+    decodedSlug = decodeURIComponent(rawClean);
+  } catch {}
 
-  const strippedSlug = stripServerGeneratedSuffixes(decodedSlug);
+  const cleanSlug = rawClean;
+  const strippedSlug = stripServerGeneratedSuffixes(cleanSlug);
 
-  // Check in-memory server cache first
   const cacheKey = cleanSlug.toLowerCase();
-  const cached = serverArticleCache.get(cacheKey) || 
-                 serverArticleCache.get(decodedSlug.toLowerCase()) ||
-                 serverArticleCache.get(strippedSlug.toLowerCase());
-  if (cached && (Date.now() - cached.timestamp < SERVER_ARTICLE_CACHE_TTL)) {
+  const cached = serverArticleCache.get(cacheKey) || serverArticleCache.get(decodedSlug.toLowerCase()) || serverArticleCache.get(strippedSlug.toLowerCase());
+  if (cached && (Date.now() - cached.timestamp < SERVER_CACHE_TTL)) {
     return cached.data;
   }
 
@@ -191,7 +225,8 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
             },
             limit: 1
           }
-        })
+        }),
+        signal: AbortSignal.timeout(5000)
       });
 
       if (response.ok) {
@@ -214,7 +249,7 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
     if (docIdMatch) {
       const docId = docIdMatch[0];
       const docUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles/${docId}`;
-      const docRes = await fetch(docUrl);
+      const docRes = await fetch(docUrl, { signal: AbortSignal.timeout(5000) });
       if (docRes.ok) {
         const docData = await docRes.json();
         if (docData?.fields) {
@@ -230,7 +265,7 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
       }
     }
 
-    // Attempt 3: Match from loaded/cached feed articles if direct single query returned no doc
+    // Attempt 3: Match from loaded/cached feed articles
     const allArticles = await getAllArticlesForFeed();
     const feedMatch = allArticles.find(a => {
       if (!a) return false;
@@ -257,10 +292,9 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
       return feedMatch;
     }
   } catch (err) {
-    console.error("Error fetching article from Firestore REST API:", err);
+    console.warn("Error querying Firestore for article:", err);
   }
 
-  // Exact match only against mock fallback if firestore returns null and it explicitly matches the requested slug/id
   const mockMatch = MOCK_ARTICLES_FALLBACK.find(
     a => (a.slug && a.slug === cleanSlug) || 
          (a.id && a.id === cleanSlug) || 
@@ -272,41 +306,12 @@ async function getArticleBySlug(slugInput: string): Promise<Record<string, any> 
   return null;
 }
 
-function escapeHtml(str: string): string {
-  if (!str) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function stripTags(str: string): string {
-  if (!str) return "";
-  return str.replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
-}
-
-function getBaseUrl(req: express.Request): string {
-  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/+$/, "");
-  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/+$/, "");
-
-  const hostHeader = (req.headers["x-forwarded-host"] as string) || req.headers.host || (process.env.VERCEL_URL ? `${process.env.VERCEL_URL}` : "localhost:3000");
-  const host = hostHeader.split(",")[0].trim();
-
-  let proto = (req.headers["x-forwarded-proto"] as string) || (req.headers["x-forwarded-ssl"] === "on" ? "https" : "");
-  if (proto) {
-    proto = proto.split(",")[0].trim();
-  }
-  if (!proto) {
-    proto = (host.startsWith("localhost") || host.startsWith("127.0.0.1")) ? "http" : "https";
-  }
-  return `${proto}://${host}`;
-}
+// ============================================================================
+// IMAGE PROCESSING & SOCIAL PREVIEW
+// ============================================================================
 
 const serverImageBufferCache = new Map<string, { buffer: Buffer; contentType: string; timestamp: number }>();
 const SERVER_IMAGE_CACHE_TTL = 15 * 60 * 1000; // 15 minutes TTL
-
 let defaultShareImageBuffer: Buffer | null = null;
 
 async function getDefaultShareImageBuffer(): Promise<Buffer> {
@@ -318,25 +323,29 @@ async function getDefaultShareImageBuffer(): Promise<Buffer> {
   if (fs.existsSync(logoPath)) {
     try {
       const rawLogo = fs.readFileSync(logoPath);
-      // Create an optimal 1200x630 Open Graph banner with centered branding on rich background
-      defaultShareImageBuffer = await sharp({
-        create: {
-          width: 1200,
-          height: 630,
-          channels: 4,
-          background: { r: 24, g: 24, b: 27, alpha: 1 }
-        }
-      })
-      .composite([{
-        input: await sharp(rawLogo).resize(960, 480, { fit: 'inside' }).toBuffer(),
-        gravity: 'center'
-      }])
-      .jpeg({ quality: 90, mozjpeg: true })
-      .toBuffer();
+      const sharp = await getSharp();
+      if (sharp) {
+        defaultShareImageBuffer = await sharp({
+          create: {
+            width: 1200,
+            height: 630,
+            channels: 4,
+            background: { r: 24, g: 24, b: 27, alpha: 1 }
+          }
+        })
+        .composite([{
+          input: await sharp(rawLogo).resize(960, 480, { fit: 'inside' }).toBuffer(),
+          gravity: 'center'
+        }])
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
 
-      return defaultShareImageBuffer;
+        return defaultShareImageBuffer;
+      } else {
+        defaultShareImageBuffer = rawLogo;
+        return defaultShareImageBuffer;
+      }
     } catch (e) {
-      console.warn("sharp composite failed for default share image, falling back to raw logo:", e);
       if (fs.existsSync(logoPath)) {
         defaultShareImageBuffer = fs.readFileSync(logoPath);
         return defaultShareImageBuffer;
@@ -353,37 +362,35 @@ async function createResizedImageBuffer(inputBuffer: Buffer, _targetMime: 'image
       return await getDefaultShareImageBuffer();
     }
 
+    const sharp = await getSharp();
+    if (!sharp) {
+      return inputBuffer;
+    }
+
     const TARGET_WIDTH = 1200;
     const TARGET_HEIGHT = 630;
 
-    // 1. Create background canvas:
-    // Resize input image to 1200x630 with 'cover', apply Gaussian blur and subtle dimming/saturation boost
-    // so it forms a seamless, natural extension of the original image with zero black/white letterbox bars.
     const backgroundBuffer = await sharp(inputBuffer)
-      .rotate() // Automatically orient based on EXIF metadata
+      .rotate()
       .resize(TARGET_WIDTH, TARGET_HEIGHT, {
         fit: 'cover',
         position: 'center'
       })
-      .blur(28) // High quality smooth Gaussian blur
+      .blur(28)
       .modulate({
-        brightness: 0.80, // Subtle dimming for focus on foreground
-        saturation: 1.15  // Rich matching ambient color palette
+        brightness: 0.80,
+        saturation: 1.15
       })
       .toBuffer();
 
-    // 2. Create foreground image:
-    // Resize original image with 'inside' so 100% of the original photo is preserved without any cropping,
-    // stretching, zooming, or distortion.
     const foregroundBuffer = await sharp(inputBuffer)
-      .rotate() // Automatically orient based on EXIF metadata
+      .rotate()
       .resize(TARGET_WIDTH, TARGET_HEIGHT, {
         fit: 'inside',
         withoutEnlargement: false
       })
       .toBuffer();
 
-    // 3. Composite foreground centered on top of the blurred background
     return await sharp(backgroundBuffer)
       .composite([
         {
@@ -398,16 +405,18 @@ async function createResizedImageBuffer(inputBuffer: Buffer, _targetMime: 'image
       })
       .toBuffer();
   } catch (err) {
-    console.warn("sharp 1200x630 social image generation warning:", err);
+    console.warn("sharp image generation warning:", err);
     try {
-      return await sharp(inputBuffer)
-        .rotate()
-        .resize(1200, 630, { fit: 'cover', position: 'center' })
-        .jpeg({ quality: 85, mozjpeg: true })
-        .toBuffer();
-    } catch {
-      return inputBuffer;
-    }
+      const sharp = await getSharp();
+      if (sharp) {
+        return await sharp(inputBuffer)
+          .rotate()
+          .resize(1200, 630, { fit: 'cover', position: 'center' })
+          .jpeg({ quality: 85, mozjpeg: true })
+          .toBuffer();
+      }
+    } catch {}
+    return inputBuffer;
   }
 }
 
@@ -620,47 +629,53 @@ function getHtmlTemplate(): string {
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>`;
 }
 
-function injectArticleMetaTags(html: string, article: Record<string, any>, fullUrl: string, baseUrl: string, slug: string): string {
-  const rawTitle = article.title ? String(article.title).trim() : "Damoh Daily News";
+function injectArticleMetaTags(
+  html: string,
+  article: Record<string, any>,
+  fullUrl: string,
+  baseUrl: string,
+  requestedSlug: string
+): string {
+  const rawTitle = article.title || "Damoh Daily News";
   const cleanTitle = escapeHtml(rawTitle);
+  const rawDesc = stripTags(article.excerpt || article.content || "दमोह जिले और मध्य प्रदेश की ताज़ा और प्रमाणित खबरें।");
+  const description = escapeHtml(rawDesc.slice(0, 200));
 
-  const rawExcerpt = article.excerpt || article.content || "दमोह और मध्य प्रदेश की ताज़ा और प्रामाणिक ख़बरें";
-  const description = escapeHtml(stripTags(rawExcerpt).slice(0, 200));
+  const safeSlug = article.slug || requestedSlug || article.id || "article";
+  const canonicalUrl = `${baseUrl}/article/${safeSlug}`;
+  const imageUrl = getArticleImageUrl(article, safeSlug, baseUrl);
 
-  const imageUrl = getArticleImageUrl(article, slug, baseUrl);
-
-  const author = article.authorName ? escapeHtml(String(article.authorName)) : "Damoh Daily News";
-  const publishedTime = article.publishedAt || new Date().toISOString();
+  const publishedTime = article.publishedAt || article.createdAt || new Date().toISOString();
   const modifiedTime = article.updatedAt || publishedTime;
-  const canonicalUrl = escapeHtml(fullUrl);
-
-  const rawContentFormatted = formatArticleBodyForSSR(article.content || "", article.excerpt || "");
-  const cleanBodyPlain = stripTags(article.content || article.excerpt || "");
+  const author = escapeHtml(article.authorName || "Damoh Daily News");
+  const rawContentFormatted = formatArticleBodyForSSR(article.content || '', article.excerpt || '');
 
   const jsonLdNewsArticle = {
     "@context": "https://schema.org",
     "@type": "NewsArticle",
     "mainEntityOfPage": {
       "@type": "WebPage",
-      "@id": fullUrl
+      "@id": canonicalUrl
     },
     "headline": rawTitle,
-    "description": stripTags(rawExcerpt).slice(0, 200),
-    "articleBody": cleanBodyPlain,
-    "image": [imageUrl],
+    "description": rawDesc.slice(0, 200),
+    "image": [
+      imageUrl,
+      ...(article.imageUrl ? [article.imageUrl] : [])
+    ],
     "datePublished": publishedTime,
     "dateModified": modifiedTime,
     "author": {
       "@type": "Person",
-      "name": article.authorName || "Damoh Daily News"
+      "name": article.authorName || "Damoh Daily News",
+      "jobTitle": "News Reporter"
     },
     "publisher": {
-      "@type": "Organization",
+      "@type": "NewsMediaOrganization",
       "name": "Damoh Daily News",
       "url": baseUrl,
       "logo": {
@@ -677,25 +692,31 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
       {
         "@type": "ListItem",
         "position": 1,
-        "name": "मुख्य पृष्ठ",
+        "name": "होम",
         "item": baseUrl
       },
       {
         "@type": "ListItem",
         "position": 2,
+        "name": article.category || "समाचार",
+        "item": `${baseUrl}/category/${encodeURIComponent(article.categorySlug || 'news')}`
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
         "name": rawTitle,
-        "item": fullUrl
+        "item": canonicalUrl
       }
     ]
   };
 
   const metaTagsHtml = `
-    <!-- Dynamic Article Meta Tags for WhatsApp, Facebook, Telegram, X & Google -->
-    <title>${cleanTitle} - Damoh Daily News</title>
+    <!-- Essential Meta Tags -->
+    <title>${cleanTitle} | Damoh Daily News</title>
     <meta name="description" content="${description}">
     <link rel="canonical" href="${canonicalUrl}">
 
-    <!-- Open Graph / Facebook / WhatsApp / Telegram -->
+    <!-- Open Graph / Facebook / WhatsApp / Telegram / LinkedIn -->
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="Damoh Daily News">
     <meta property="og:title" content="${cleanTitle}">
@@ -767,7 +788,6 @@ function injectArticleMetaTags(html: string, article: Record<string, any>, fullU
 
   cleanHtml = cleanHtml.replace('<div id="root"></div>', serverRenderedBody);
 
-  // Inject meta tags right at the top of <head> for maximum crawler priority
   if (cleanHtml.includes('<head>')) {
     return cleanHtml.replace('<head>', `<head>\n${metaTagsHtml}`);
   }
@@ -834,10 +854,400 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
   return cleanHtml.replace('</head>', `${metaTagsHtml}\n</head>`);
 }
 
+// ============================================================================
+// LIVE UPDATES CLEANUP HELPERS (Self-Contained & Crash-Proof)
+// ============================================================================
+
+function extractCloudinaryPublicId(urlOrId?: string): string | null {
+  if (!urlOrId || typeof urlOrId !== 'string') return null;
+  if (!urlOrId.startsWith('http://') && !urlOrId.startsWith('https://') && !urlOrId.startsWith('data:')) {
+    if (urlOrId.includes('/')) return urlOrId;
+    return null;
+  }
+  if (!urlOrId.includes('res.cloudinary.com')) return null;
+
+  try {
+    const cleanUrl = urlOrId.split('?')[0].split('#')[0];
+    const uploadMatch = cleanUrl.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[a-zA-Z0-9]+)?$/);
+    if (uploadMatch && uploadMatch[1]) {
+      return uploadMatch[1];
+    }
+  } catch (e) {}
+  return null;
+}
+
+async function destroyCloudinaryImage(publicId: string): Promise<boolean> {
+  try {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.VITE_CLOUDINARY_CLOUD_NAME || "damoh-daily-news";
+    const apiKey = process.env.CLOUDINARY_API_KEY || process.env.VITE_CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (!cloudName || !apiKey || !apiSecret) return false;
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const stringToSign = `public_id=${publicId}&timestamp=${timestamp}${apiSecret}`;
+    const signature = crypto.createHash('sha1').update(stringToSign).digest('hex');
+
+    const body = new URLSearchParams({
+      public_id: publicId,
+      timestamp,
+      api_key: apiKey,
+      signature
+    });
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+      method: 'POST',
+      body,
+      signal: AbortSignal.timeout(5000)
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.warn(`[LiveUpdates Cleanup] Error destroying Cloudinary image ${publicId}:`, err);
+    return false;
+  }
+}
+
+async function performLiveUpdatesCleanup(): Promise<any> {
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const cutoffTime = Date.now() - SEVEN_DAYS_MS;
+  const cutoffIso = new Date(cutoffTime).toISOString();
+
+  let projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
+  let apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "";
+
+  try {
+    const queryUrl = apiKey 
+      ? `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`
+      : `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+
+    const res = await fetch(queryUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: "live_updates" }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: "timestamp" },
+              op: "LESS_THAN",
+              value: { timestampValue: cutoffIso }
+            }
+          },
+          limit: 100
+        }
+      }),
+      signal: AbortSignal.timeout(6000)
+    });
+
+    if (!res.ok) {
+      return { success: false, deletedCount: 0 };
+    }
+
+    const results = await res.json();
+    let deletedCount = 0;
+    for (const item of results) {
+      if (item.document && item.document.name) {
+        const docName = item.document.name;
+        const delUrl = apiKey ? `https://firestore.googleapis.com/v1/${docName}?key=${apiKey}` : `https://firestore.googleapis.com/v1/${docName}`;
+        await fetch(delUrl, { method: "DELETE" }).catch(() => {});
+        deletedCount++;
+      }
+    }
+
+    return { success: true, deletedCount };
+  } catch (err) {
+    console.warn("[LiveUpdates Cleanup] Error in automated retention cleanup:", err);
+    return { success: false, deletedCount: 0, error: String(err) };
+  }
+}
+
+// ============================================================================
+// FCM PUSH DISPATCH HELPERS (Self-Contained & Crash-Proof)
+// ============================================================================
+
+interface FCMPushPayload {
+  id?: string;
+  title: string;
+  body: string;
+  priority?: "normal" | "breaking" | "important" | "urgent";
+  category?: "breaking" | "important" | "local" | "live_update";
+  articleId?: string;
+  articleSlug?: string;
+  liveUpdateId?: string;
+  targetUrl?: string;
+  imageUrl?: string;
+}
+
+function parseServiceAccount(raw: string | undefined): any | null {
+  if (!raw) return null;
+  try {
+    let clean = raw.trim();
+    if (clean.startsWith('"') && clean.endsWith('"')) {
+      clean = clean.slice(1, -1);
+    }
+    if (clean.startsWith("{")) {
+      const parsed = JSON.parse(clean);
+      if (parsed.private_key) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+      }
+      return parsed;
+    }
+    // Try base64
+    const decoded = Buffer.from(clean, "base64").toString("utf-8");
+    if (decoded.trim().startsWith("{")) {
+      const parsed = JSON.parse(decoded);
+      if (parsed.private_key) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+      }
+      return parsed;
+    }
+  } catch (e) {
+    console.warn("[FCM Server] Service account parsing failed safely:", e);
+  }
+  return null;
+}
+
+let cachedOAuthToken: { token: string; expiresAt: number } | null = null;
+
+async function getFCMAccessToken(serviceAccountJson: any): Promise<string | null> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedOAuthToken && cachedOAuthToken.expiresAt > now + 60) {
+    return cachedOAuthToken.token;
+  }
+
+  try {
+    const clientEmail = serviceAccountJson.client_email;
+    const privateKey = serviceAccountJson.private_key;
+
+    if (!clientEmail || !privateKey) {
+      return null;
+    }
+
+    const header = { alg: "RS256", typ: "JWT" };
+    const claim = {
+      iss: clientEmail,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      exp: now + 3600,
+      iat: now
+    };
+
+    const encodedHeader = Buffer.from(JSON.stringify(header)).toString("base64url");
+    const encodedClaim = Buffer.from(JSON.stringify(claim)).toString("base64url");
+    const unsignedToken = `${encodedHeader}.${encodedClaim}`;
+
+    const signer = crypto.createSign("RSA-SHA256");
+    signer.update(unsignedToken);
+    const signature = signer.sign(privateKey, "base64url");
+    const signedJwt = `${unsignedToken}.${signature}`;
+
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: signedJwt
+      }).toString(),
+      signal: AbortSignal.timeout(6000)
+    });
+
+    if (!tokenRes.ok) {
+      return null;
+    }
+
+    const tokenData = await tokenRes.json();
+    if (tokenData.access_token) {
+      cachedOAuthToken = {
+        token: tokenData.access_token,
+        expiresAt: now + (tokenData.expires_in || 3600)
+      };
+      return tokenData.access_token;
+    }
+  } catch (err) {
+    console.warn("[FCM Server] Error generating OAuth2 access token:", err);
+  }
+
+  return null;
+}
+
+async function fetchRegisteredFCMTokens(projectId: string, apiKey: string): Promise<any[]> {
+  const tokens: any[] = [];
+  try {
+    const queryUrl = apiKey 
+      ? `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/fcm_tokens?pageSize=300&key=${apiKey}`
+      : `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/fcm_tokens?pageSize=300`;
+
+    const res = await fetch(queryUrl, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return tokens;
+
+    const data = await res.json();
+    const docs = data.documents || [];
+
+    for (const doc of docs) {
+      const docName = doc.name || "";
+      const docId = docName.split("/fcm_tokens/")[1] || "";
+      const fields = doc.fields || {};
+
+      const token = fields.token?.stringValue || "";
+      const active = fields.active ? fields.active.booleanValue !== false : true;
+      const platform = fields.platform?.stringValue || "web";
+
+      if (token && token.length > 20 && active) {
+        tokens.push({ docName, docId, token, platform, active });
+      }
+    }
+  } catch (err) {
+    console.warn("[FCM Server] Error retrieving registered tokens from Firestore:", err);
+  }
+  return tokens;
+}
+
+async function dispatchFCMPushNotification(payload: FCMPushPayload): Promise<any> {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
+  const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "";
+
+  const tokenRecords = await fetchRegisteredFCMTokens(projectId, apiKey);
+  const uniqueTokensMap = new Map<string, any>();
+  for (const rec of tokenRecords) {
+    if (!uniqueTokensMap.has(rec.token)) {
+      uniqueTokensMap.set(rec.token, rec);
+    }
+  }
+  const uniqueRecords = Array.from(uniqueTokensMap.values());
+
+  if (uniqueRecords.length === 0) {
+    return {
+      success: true,
+      totalTokens: 0,
+      sentCount: 0,
+      failedCount: 0,
+      invalidTokensRemoved: 0,
+      method: "no_tokens",
+      message: "No registered device tokens found to receive push notifications."
+    };
+  }
+
+  const formattedTitle = payload.priority === "urgent"
+    ? `🚨 ${payload.title}`
+    : payload.priority === "breaking"
+    ? `🔴 ब्रेकिंग: ${payload.title}`
+    : payload.title;
+
+  const targetUrl = payload.targetUrl || (payload.articleSlug ? `/article/${payload.articleSlug}` : "/");
+  const notificationTag = `ddn-${payload.id || Date.now()}`;
+
+  let serviceAccountJson: any = parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_APPLICATION_CREDENTIALS);
+
+  if (serviceAccountJson) {
+    const accessToken = await getFCMAccessToken(serviceAccountJson);
+    if (accessToken) {
+      const fcmV1Endpoint = `https://fcm.googleapis.com/v1/projects/${serviceAccountJson.project_id || projectId}/messages:send`;
+      let sentCount = 0;
+      let failedCount = 0;
+      let invalidTokensRemoved = 0;
+
+      await Promise.all(uniqueRecords.map(async (record) => {
+        try {
+          const messagePayload: any = {
+            message: {
+              token: record.token,
+              notification: {
+                title: formattedTitle,
+                body: payload.body,
+                ...(payload.imageUrl ? { image: payload.imageUrl } : {})
+              },
+              data: {
+                title: formattedTitle,
+                body: payload.body,
+                tag: notificationTag,
+                targetUrl: targetUrl,
+                priority: payload.priority || "normal",
+                category: payload.category || "breaking",
+                articleId: payload.articleId || "",
+                articleSlug: payload.articleSlug || "",
+                liveUpdateId: payload.liveUpdateId || "",
+                imageUrl: payload.imageUrl || "",
+                timestamp: String(Date.now())
+              },
+              webpush: {
+                headers: {
+                  Urgency: payload.priority === "urgent" || payload.priority === "breaking" ? "high" : "normal",
+                  TTL: "86400"
+                },
+                fcm_options: {
+                  link: targetUrl
+                },
+                notification: {
+                  icon: "/icon-192-v2.png",
+                  badge: "/favicon-32x32-v2.png",
+                  tag: notificationTag,
+                  renotify: true,
+                  requireInteraction: payload.priority === "urgent" || payload.priority === "breaking",
+                  ...(payload.imageUrl ? { image: payload.imageUrl } : {})
+                }
+              }
+            }
+          };
+
+          const sendRes = await fetch(fcmV1Endpoint, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${accessToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(messagePayload),
+            signal: AbortSignal.timeout(8000)
+          });
+
+          if (sendRes.ok) {
+            sentCount++;
+          } else {
+            failedCount++;
+            const errData = await sendRes.json().catch(() => null);
+            const errCode = errData?.error?.details?.[0]?.errorCode || errData?.error?.status;
+            if (errCode === "UNREGISTERED" || errCode === "INVALID_ARGUMENT") {
+              const delUrl = apiKey ? `https://firestore.googleapis.com/v1/${record.docName}?key=${apiKey}` : `https://firestore.googleapis.com/v1/${record.docName}`;
+              await fetch(delUrl, { method: "DELETE" }).catch(() => {});
+              invalidTokensRemoved++;
+            }
+          }
+        } catch (dispatchErr) {
+          failedCount++;
+        }
+      }));
+
+      return {
+        success: sentCount > 0,
+        totalTokens: uniqueRecords.length,
+        sentCount,
+        failedCount,
+        invalidTokensRemoved,
+        method: "fcm_v1",
+        message: `Dispatched to ${sentCount}/${uniqueRecords.length} device(s) via FCM HTTP v1.`
+      };
+    }
+  }
+
+  return {
+    success: false,
+    totalTokens: uniqueRecords.length,
+    sentCount: 0,
+    failedCount: uniqueRecords.length,
+    invalidTokensRemoved: 0,
+    method: "unconfigured",
+    message: "FCM credentials not configured on server."
+  };
+}
+
+// ============================================================================
+// EXPRESS APP FACTORY
+// ============================================================================
+
 export function createExpressApp() {
   const app = express();
 
-  // Basic Security Headers Middleware
+  // Basic Security & Compatibility Headers
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
@@ -849,15 +1259,14 @@ export function createExpressApp() {
   // Simple in-memory rate limiter for API endpoints (exempting social crawler image requests)
   const ipRequests = new Map<string, { count: number; resetTime: number }>();
   app.use("/api", (req, res, next) => {
-    // Exempt article image generation for social share preview crawlers
     if (req.path.startsWith("/article-image")) {
       return next();
     }
 
     const ip = (req.headers["x-forwarded-for"] as string) || req.ip || "unknown";
     const now = Date.now();
-    const windowMs = 15 * 60 * 1000; // 15 mins
-    const limit = 300; // 300 requests per 15 mins
+    const windowMs = 15 * 60 * 1000;
+    const limit = 300;
 
     const record = ipRequests.get(ip);
     if (!record || now > record.resetTime) {
@@ -914,7 +1323,7 @@ export function createExpressApp() {
         uploadPreset: upload_preset
       });
     } catch (err: any) {
-      console.error("Cloudinary sign error:", err);
+      console.warn("Cloudinary sign error:", err);
       res.status(500).json({ signed: false, error: err?.message || "Failed to generate Cloudinary signature" });
     }
   });
@@ -925,12 +1334,12 @@ export function createExpressApp() {
       const result = await performLiveUpdatesCleanup();
       return res.status(200).json(result);
     } catch (err: any) {
-      console.error("[LiveUpdates Cleanup] Manual execution error:", err);
-      return res.status(500).json({ success: false, error: err?.message || "Failed to execute cleanup" });
+      console.warn("[LiveUpdates Cleanup] Manual execution error:", err);
+      return res.status(200).json({ success: false, error: err?.message || "Failed to execute cleanup" });
     }
   });
 
-  // Associated Live Update Image Deletion Endpoint (for immediate admin panel delete)
+  // Associated Live Update Image Deletion Endpoint
   app.post("/api/live-updates/delete-image", async (req, res) => {
     try {
       const { publicId, imageUrl } = req.body || {};
@@ -942,7 +1351,7 @@ export function createExpressApp() {
       return res.status(200).json({ success, publicId: targetPublicId });
     } catch (err: any) {
       console.warn("[LiveUpdates Cleanup] Error deleting image asset:", err);
-      return res.status(500).json({ success: false, error: err?.message });
+      return res.status(200).json({ success: false, error: err?.message });
     }
   });
 
@@ -982,11 +1391,10 @@ export function createExpressApp() {
         imageUrl
       });
 
-      console.log(`[FCM Server] Push broadcast result:`, result);
       return res.status(200).json(result);
     } catch (err: any) {
-      console.error("[FCM Server] Send push error:", err);
-      return res.status(500).json({ 
+      console.warn("[FCM Server] Send push error:", err);
+      return res.status(200).json({ 
         success: false, 
         error: err?.message || "Failed to dispatch push notification" 
       });
@@ -1017,13 +1425,13 @@ export function createExpressApp() {
         ].filter(Boolean)
       });
     } catch (err: any) {
-      return res.status(500).json({ status: "error", error: err?.message });
+      return res.status(200).json({ status: "error", error: err?.message });
     }
   });
 
-  // Live Damoh Weather Proxy API with in-memory caching and fail-safe fallback
+  // Live Damoh Weather Proxy API
   let weatherCache: { data: any; timestamp: number } | null = null;
-  const WEATHER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  const WEATHER_CACHE_TTL = 10 * 60 * 1000;
 
   app.get("/api/weather", async (_req, res) => {
     try {
@@ -1049,140 +1457,89 @@ export function createExpressApp() {
       weatherCache = { data, timestamp: now };
       res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
       return res.json(data);
-    } catch (err: any) {
+    } catch (err) {
+      console.warn("Error fetching live Damoh weather:", err);
       if (weatherCache) {
-        res.setHeader("Cache-Control", "public, max-age=120");
         return res.json(weatherCache.data);
       }
-
-      // Safe local fallback for Damoh if remote API is momentarily unreachable
-      const defaultData = {
+      return res.json({
         current: {
-          temperature_2m: 29,
-          apparent_temperature: 31,
+          temperature_2m: 28,
+          relative_humidity_2m: 65,
+          apparent_temperature: 29,
+          is_day: 1,
           weather_code: 1,
-          relative_humidity_2m: 72,
-          wind_speed_10m: 9,
-          visibility: 10000,
-          is_day: 1
+          wind_speed_10m: 10,
+          visibility: 10000
         },
         daily: {
-          temperature_2m_max: [33],
-          temperature_2m_min: [24],
-          sunrise: [`${new Date().toISOString().split("T")[0]}T05:52`],
-          sunset: [`${new Date().toISOString().split("T")[0]}T18:48`]
+          temperature_2m_max: [32],
+          temperature_2m_min: [22],
+          sunrise: ["2026-08-31T05:55"],
+          sunset: ["2026-08-31T18:35"]
         }
-      };
-      res.setHeader("Cache-Control", "public, max-age=120");
-      return res.json(defaultData);
+      });
     }
   });
 
-  // Serve firebase-applet-config.json explicitly if requested
-  app.get("/firebase-applet-config.json", (_req, res) => {
-    const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
-    if (fs.existsSync(configPath)) {
-      res.setHeader("Content-Type", "application/json");
-      res.sendFile(configPath);
-    } else {
-      res.status(404).json({ error: "Config not found" });
-    }
-  });
-
-  // Default fallback social sharing image endpoint (1200x630 binary JPEG)
-  app.get("/social-preview.jpg", async (_req, res) => {
+  // Real-Time 1200x630 JPEG Social Share Image Generation Endpoint
+  app.get(["/api/article-image/:slug.jpg", "/api/article-image/:slug", "/article-image/:slug.jpg", "/article-image/:slug"], async (req, res) => {
     try {
-      const buf = await getDefaultShareImageBuffer();
-      if (buf && buf.length > 0) {
-        res.setHeader("Content-Type", "image/jpeg");
-        res.setHeader("Content-Length", buf.length);
-        res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
-        return res.status(200).send(buf);
-      }
-    } catch (err) {
-      console.error("Error serving social-preview.jpg:", err);
-    }
-    const logoPath = path.resolve(process.cwd(), "public", "logo.png");
-    if (fs.existsSync(logoPath)) {
-      res.setHeader("Content-Type", "image/png");
-      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
-      return res.status(200).sendFile(logoPath);
-    }
-    res.status(404).send("Not found");
-  });
+      const rawParam = req.params.slug || "article";
+      const cleanSlug = rawParam.split('?')[0].split('#')[0].replace(/\.jpg$/i, "");
+      const cleanCacheKey = cleanSlug.toLowerCase();
 
-  // Serve binary article image for social crawlers (WhatsApp, Facebook, Twitter, Telegram)
-  app.get([
-    "/api/article-image/:slug", 
-    "/api/article-image/:slug.jpg", 
-    "/api/article-image/*",
-    "/article-image/:slug",
-    "/article-image/:slug.jpg",
-    "/article-image/*"
-  ], async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Accept-Ranges", "bytes");
-    try {
-      let rawSlug = req.params.slug || req.params[0] || req.path.replace(/^\/(?:api\/)?article-image\//, "") || "";
-      let slug = rawSlug.replace(/\.jpg$/i, "").replace(/\.png$/i, "").replace(/\.webp$/i, "");
-      if (slug.startsWith("article-image/")) {
-        slug = slug.replace(/^article-image\//, "");
-      }
-      try {
-        slug = decodeURIComponent(slug);
-      } catch {}
-
-      const cleanCacheKey = slug.toLowerCase().trim();
-
-      // 1. Check in-memory buffer cache for ultra-fast instant 200 OK delivery
+      // Check In-Memory Buffer Cache
       const cached = serverImageBufferCache.get(cleanCacheKey);
       if (cached && (Date.now() - cached.timestamp < SERVER_IMAGE_CACHE_TTL)) {
-        res.setHeader("Content-Type", cached.contentType);
+        res.setHeader("Content-Type", "image/jpeg");
         res.setHeader("Content-Length", cached.buffer.length);
         res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
         return res.status(200).send(cached.buffer);
       }
 
-      const article = await getArticleBySlug(slug);
-
+      const article = await getArticleBySlug(cleanSlug);
       if (article) {
-        // Check all possible image fields in Firestore document
-        const rawImage = 
-          article.imageUrl || 
-          article.ogImage || 
-          article.featuredImage || 
-          article.image || 
-          article.photoUrl || 
-          article.thumbnailUrl || 
-          article.coverImage || 
-          article.mediaUrl || 
-          (Array.isArray(article.images) && article.images[0]) ||
-          (Array.isArray(article.gallery) && article.gallery[0]);
+        const rawImage = article.imageUrl || article.image;
 
-        // Case A: Base64 Data URI (e.g. data:image/jpeg;base64,...)
-        if (rawImage && typeof rawImage === "string" && rawImage.trim().toLowerCase().startsWith("data:image/")) {
-          const commaIdx = rawImage.indexOf(",");
-          if (commaIdx !== -1) {
-            const base64Data = rawImage.substring(commaIdx + 1).trim();
-            const rawBuffer = Buffer.from(base64Data, "base64");
-            if (rawBuffer && rawBuffer.length > 0) {
-              const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
-              const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
-              serverImageBufferCache.set(cleanCacheKey, entry);
+        // Case A: Cloudinary URL
+        if (rawImage && typeof rawImage === "string" && rawImage.includes("res.cloudinary.com")) {
+          const cleanUrl = rawImage.split('?')[0].split('#')[0];
+          let directTransformUrl = cleanUrl.replace(
+            /\/image\/upload\/(?:v\d+\/)?/,
+            '/image/upload/c_pad,w_1200,h_630,b_gen_fill:ignore-foreground_true,f_jpg,q_88/'
+          );
+          if (!directTransformUrl.toLowerCase().endsWith('.jpg') && !directTransformUrl.toLowerCase().endsWith('.jpeg')) {
+            directTransformUrl = directTransformUrl.replace(/\.[a-zA-Z0-9]+$/, '') + '.jpg';
+          }
 
-              res.setHeader("Content-Type", "image/jpeg");
-              res.setHeader("Content-Length", optimizedBuffer.length);
-              res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
-              return res.status(200).send(optimizedBuffer);
+          try {
+            const fetchRes = await fetch(directTransformUrl, { signal: AbortSignal.timeout(7000) });
+            if (fetchRes.ok) {
+              const arrayBuf = await fetchRes.arrayBuffer();
+              const rawBuffer = Buffer.from(arrayBuf);
+              if (rawBuffer && rawBuffer.length > 0) {
+                const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
+                const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
+                serverImageBufferCache.set(cleanCacheKey, entry);
+
+                res.setHeader("Content-Type", "image/jpeg");
+                res.setHeader("Content-Length", optimizedBuffer.length);
+                res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400");
+                return res.status(200).send(optimizedBuffer);
+              }
             }
+          } catch (cloudErr) {
+            console.warn("Direct Cloudinary transformation failed, falling back to raw image download:", cloudErr);
           }
         }
 
-        // Case B: Raw Base64 string (without data: prefix)
-        if (rawImage && typeof rawImage === "string" && !rawImage.startsWith("http") && !rawImage.startsWith("//") && (rawImage.startsWith("/9j/") || rawImage.startsWith("iVBORw") || rawImage.startsWith("UklGR") || rawImage.length > 500)) {
+        // Case B: Base64 Data URL
+        if (rawImage && typeof rawImage === "string" && rawImage.startsWith("data:image/")) {
           try {
-            const rawBuffer = Buffer.from(rawImage.trim(), "base64");
-            if (rawBuffer && rawBuffer.length > 0) {
+            const base64Data = rawImage.split(",")[1];
+            if (base64Data) {
+              const rawBuffer = Buffer.from(base64Data, "base64");
               const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
               const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
               serverImageBufferCache.set(cleanCacheKey, entry);
@@ -1193,11 +1550,11 @@ export function createExpressApp() {
               return res.status(200).send(optimizedBuffer);
             }
           } catch (b64Err) {
-            console.warn("Error parsing raw base64 image:", b64Err);
+            console.warn("Base64 image buffer generation failed:", b64Err);
           }
         }
 
-        // Case C: Remote HTTPS URL (Cloudinary, Unsplash, Firebase Storage, Google CDN, etc.)
+        // Case C: Remote HTTPS URL
         if (rawImage && typeof rawImage === "string" && rawImage.trim() && !rawImage.toLowerCase().startsWith("data:")) {
           let url = rawImage.trim();
           if (url.startsWith("//")) url = `https:${url}`;
@@ -1250,7 +1607,7 @@ export function createExpressApp() {
                 if (ytRes.ok) {
                   const arrayBuf = await ytRes.arrayBuffer();
                   const rawBuffer = Buffer.from(arrayBuf);
-                  if (rawBuffer && rawBuffer.length > 1000) { // Check that it is not the 120-byte 404 placeholder
+                  if (rawBuffer && rawBuffer.length > 1000) {
                     const optimizedBuffer = await createResizedImageBuffer(rawBuffer, "image/jpeg");
                     const entry = { buffer: optimizedBuffer, contentType: "image/jpeg", timestamp: Date.now() };
                     serverImageBufferCache.set(cleanCacheKey, entry);
@@ -1261,22 +1618,20 @@ export function createExpressApp() {
                     return res.status(200).send(optimizedBuffer);
                   }
                 }
-              } catch (ytErr) {
-                // Try next YouTube thumbnail URL
-              }
+              } catch (ytErr) {}
             }
           }
         }
       }
 
-      // Default fallback: Always return HTTP 200 with the binary default share image (NEVER redirect!)
+      // Default fallback: Always return HTTP 200 with the binary default share image
       const fallbackBuf = await getDefaultShareImageBuffer();
       res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Content-Length", fallbackBuf.length);
       res.setHeader("Cache-Control", "public, max-age=3600");
       return res.status(200).send(fallbackBuf);
     } catch (err) {
-      console.error("Error serving article image:", err);
+      console.warn("Error serving article image:", err);
       const fallbackBuf = await getDefaultShareImageBuffer();
       res.setHeader("Content-Type", "image/jpeg");
       res.setHeader("Content-Length", fallbackBuf.length);
@@ -1285,126 +1640,64 @@ export function createExpressApp() {
     }
   });
 
-  // PWA Service Worker & Manifest Endpoints
-  app.get("/sw.js", (_req, res) => {
-    const swPath = path.resolve(process.cwd(), "public", "sw.js");
-    if (fs.existsSync(swPath)) {
-      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.setHeader("Service-Worker-Allowed", "/");
-      res.sendFile(swPath);
-    } else {
-      res.status(404).send("// sw not found");
+  // Direct Social Share Image Fallback
+  app.get("/social-preview.jpg", async (_req, res) => {
+    try {
+      const buf = await getDefaultShareImageBuffer();
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Content-Length", buf.length);
+      res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+      return res.status(200).send(buf);
+    } catch (e) {
+      return res.status(200).send(Buffer.from(""));
     }
   });
 
-  app.get("/manifest.json", (_req, res) => {
-    const manifestPath = path.resolve(process.cwd(), "public", "manifest.json");
-    if (fs.existsSync(manifestPath)) {
-      res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.sendFile(manifestPath);
-    } else {
-      res.status(404).json({ error: "manifest not found" });
-    }
-  });
-
-  app.get([
-    "/favicon.ico",
-    "/favicon-v2.ico",
-    "/icon.svg", 
-    "/icon-v2.svg",
-    "/icon.png", 
-    "/icon-1024.png",
-    "/icon-1024-v2.png",
-    "/icon-192.png", 
-    "/icon-192-v2.png", 
-    "/icon-512.png",
-    "/icon-512-v2.png",
-    "/icon-192-maskable.png",
-    "/icon-192-maskable-v2.png",
-    "/icon-512-maskable.png",
-    "/icon-512-maskable-v2.png",
-    "/apple-touch-icon.png",
-    "/apple-touch-icon-v2.png",
-    "/favicon.png",
-    "/favicon-v2.png",
-    "/favicon-48x48.png",
-    "/favicon-48x48-v2.png",
-    "/favicon-32x32.png",
-    "/favicon-32x32-v2.png",
-    "/favicon-16x16.png",
-    "/favicon-16x16-v2.png"
-  ], (req, res) => {
-    const filename = req.path.replace(/^\//, '') || 'favicon-v2.ico';
-    const iconPath = path.resolve(process.cwd(), "public", filename);
-    if (fs.existsSync(iconPath)) {
-      if (filename.endsWith('.svg')) {
-        res.setHeader("Content-Type", "image/svg+xml");
-      } else if (filename.endsWith('.ico')) {
-        res.setHeader("Content-Type", "image/x-icon");
-      } else if (filename.endsWith('.webp')) {
-        res.setHeader("Content-Type", "image/webp");
-      } else {
-        res.setHeader("Content-Type", "image/png");
-      }
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.sendFile(iconPath);
-    } else {
-      const fallbackPath = path.resolve(process.cwd(), "public", "favicon-v2.png");
-      if (fs.existsSync(fallbackPath)) {
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-        res.sendFile(fallbackPath);
-      } else {
-        res.redirect(302, DEFAULT_SHARE_IMAGE);
-      }
-    }
-  });
-
-  // Google AdSense ads.txt authorization
-  app.get("/ads.txt", (_req, res) => {
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    res.status(200).send("google.com, pub-2796957315598605, DIRECT, f08c47fec0942fa0\n");
-  });
-
-  // SEO Routes for Google Search Console, Google News, and Web Crawlers
+  // Robots.txt
   app.get("/robots.txt", (req, res) => {
-    const baseUrl = getBaseUrl(req);
-    const text = generateRobotsTxt(baseUrl);
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.status(200).send(text);
+    try {
+      const baseUrl = getBaseUrl(req);
+      const robots = generateRobotsTxt(baseUrl);
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      return res.status(200).send(robots);
+    } catch (e) {
+      return res.status(200).send("User-agent: *\nAllow: /\n");
+    }
   });
 
+  // Sitemap.xml
   app.get("/sitemap.xml", async (req, res) => {
     try {
       const baseUrl = getBaseUrl(req);
       const xml = await generateSitemapXml(baseUrl);
       res.setHeader("Content-Type", "application/xml; charset=utf-8");
-      res.status(200).send(xml);
+      return res.status(200).send(xml);
     } catch (err) {
-      console.error("Error generating sitemap.xml:", err);
-      res.status(500).send("Error generating sitemap");
+      console.warn("Error generating sitemap.xml:", err);
+      const baseUrl = getBaseUrl(req);
+      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${baseUrl}/</loc></url></urlset>`);
     }
   });
 
+  // RSS Feed
   app.get(["/rss.xml", "/feed.xml", "/rss"], async (req, res) => {
     try {
       const baseUrl = getBaseUrl(req);
       const xml = await generateRssFeedXml(baseUrl);
       res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
-      res.status(200).send(xml);
+      return res.status(200).send(xml);
     } catch (err) {
-      console.error("Error generating RSS feed:", err);
-      res.status(500).send("Error generating RSS feed");
+      console.warn("Error generating RSS feed:", err);
+      const baseUrl = getBaseUrl(req);
+      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Damoh Daily News</title><link>${baseUrl}</link></channel></rss>`);
     }
   });
 
   // Intercept /article/:slug for dynamic Open Graph & SEO meta tags and 301 redirects
   app.get(["/article/:slug", "/article/:slug/*"], async (req, res) => {
     try {
-      const slug = req.params.slug;
+      const slug = req.params.slug || "";
       const baseUrl = getBaseUrl(req);
 
       const rawClean = slug.trim().split('?')[0].split('#')[0].replace(/\.jpg$/i, "");
@@ -1439,7 +1732,7 @@ export function createExpressApp() {
       res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
       return res.status(200).send(finalHtml);
     } catch (err) {
-      console.error("Error serving article SSR meta tags:", err);
+      console.warn("Error serving article SSR meta tags:", err);
       const rawHtml = getHtmlTemplate();
       const baseUrl = getBaseUrl(req);
       const fallbackHtml = injectDefaultMetaTags(rawHtml, `${baseUrl}${req.path}`, baseUrl);
@@ -1456,7 +1749,9 @@ export {
   getAllArticlesForFeed,
   createResizedImageBuffer,
   injectArticleMetaTags,
-  injectDefaultMetaTags
+  injectDefaultMetaTags,
+  dispatchFCMPushNotification,
+  performLiveUpdatesCleanup
 };
 
 const app = createExpressApp();

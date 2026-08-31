@@ -218,24 +218,37 @@ export async function dispatchFCMPushNotification(payload: FCMPushPayload): Prom
   const targetUrl = payload.targetUrl || (payload.articleSlug ? `/article/${payload.articleSlug}` : "/");
   const notificationTag = `ddn-${payload.id || Date.now()}`;
 
-  // 3. Check for Service Account (FCM HTTP v1)
-  let serviceAccountJson: any = null;
-  const rawServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (rawServiceAccount) {
-    try {
-      if (rawServiceAccount.trim().startsWith("{")) {
-        serviceAccountJson = JSON.parse(rawServiceAccount);
-      } else {
-        // Check if base64 encoded
-        const decoded = Buffer.from(rawServiceAccount, "base64").toString("utf-8");
-        if (decoded.trim().startsWith("{")) {
-          serviceAccountJson = JSON.parse(decoded);
-        }
-      }
-    } catch (e) {
-      console.warn("[FCM Server] Could not parse FIREBASE_SERVICE_ACCOUNT JSON:", e);
+function parseServiceAccount(raw: string | undefined): any | null {
+  if (!raw) return null;
+  try {
+    let clean = raw.trim();
+    if (clean.startsWith('"') && clean.endsWith('"')) {
+      clean = clean.slice(1, -1);
     }
+    if (clean.startsWith("{")) {
+      const parsed = JSON.parse(clean);
+      if (parsed.private_key) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+      }
+      return parsed;
+    }
+    // Try base64
+    const decoded = Buffer.from(clean, "base64").toString("utf-8");
+    if (decoded.trim().startsWith("{")) {
+      const parsed = JSON.parse(decoded);
+      if (parsed.private_key) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+      }
+      return parsed;
+    }
+  } catch (e) {
+    console.warn("[FCM Server] Service account parsing failed safely:", e);
   }
+  return null;
+}
+
+  // 3. Check for Service Account (FCM HTTP v1)
+  let serviceAccountJson: any = parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_APPLICATION_CREDENTIALS);
 
   // 4. Method A: FCM HTTP v1 Dispatch
   if (serviceAccountJson) {
