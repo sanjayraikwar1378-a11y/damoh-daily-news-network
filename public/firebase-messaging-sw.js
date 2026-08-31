@@ -1,76 +1,68 @@
-// Firebase Cloud Messaging & Push Service Worker for Damoh Daily News Network
+// Firebase Cloud Messaging & Web Push Service Worker for Damoh Daily News Network
 // Canonical Single Production Service Worker (Scope: '/')
+// Fully self-contained, high-reliability background notification engine
 
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
+const SW_VERSION = 'v2026.08.31-push-fix';
+console.log(`[SW] Initializing Damoh Daily News Service Worker (${SW_VERSION})`);
 
-// Initialize Firebase compat inside Service Worker
-const firebaseConfig = {
-  apiKey: "AIzaSyAqqGLWs0rXdM_Cp2q2HPkDgToASXCCoCM",
-  authDomain: "damoh-daily-news.firebaseapp.com",
-  projectId: "damoh-daily-news",
-  storageBucket: "damoh-daily-news.firebasestorage.app",
-  messagingSenderId: "548384927269",
-  appId: "1:548384927269:web:5f4fdb181d9218731599cc"
-};
+// 1. Lifecycle - Install: Activate immediately without waiting
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
 
-try {
-  if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-  }
-} catch (e) {
-  console.warn('[SW] Firebase initializeApp warning:', e);
-}
+// 2. Lifecycle - Activate: Claim all clients immediately and clean legacy caches
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      'caches' in self ? caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName.includes('damoh') || cacheName.includes('workbox') || cacheName.includes('sw-')) {
+              return caches.delete(cacheName);
+            }
+            return Promise.resolve(false);
+          })
+        );
+      }) : Promise.resolve()
+    ])
+  );
+});
 
-let messaging = null;
-try {
-  if (firebase.messaging && firebase.messaging.isSupported()) {
-    messaging = firebase.messaging();
-  }
-} catch (e) {
-  console.warn('[SW] Firebase Messaging initialization warning:', e);
-}
-
-// In-memory deduplication set to avoid duplicate notifications when both
-// Firebase onBackgroundMessage and native push event fire within short interval.
-const recentNotificationMap = new Map();
-
-function isDuplicateNotification(uniqueId) {
-  if (!uniqueId) return false;
-  const now = Date.now();
-  if (recentNotificationMap.has(uniqueId)) {
-    const timestamp = recentNotificationMap.get(uniqueId);
-    if (now - timestamp < 8000) { // 8 seconds window
-      return true;
-    }
-  }
-  recentNotificationMap.set(uniqueId, now);
-
-  // Prune older entries
-  if (recentNotificationMap.size > 100) {
-    for (const [key, time] of recentNotificationMap.entries()) {
-      if (now - time > 60000) {
-        recentNotificationMap.delete(key);
+/**
+ * Robust notification display logic for all Push payloads (FCM HTTP v1, data-only, or legacy).
+ * Always resolves absolute URLs and ensures complete compliance with Android notification tray standards.
+ */
+async function handleBackgroundPush(event) {
+  const origin = self.location ? self.location.origin : 'https://www.damohdailynewsnetwork.in';
+  
+  let payload = {};
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch {
+      try {
+        const textData = event.data.text();
+        payload = {
+          data: {
+            title: 'दमोह डेली न्यूज़ नेटवर्क',
+            body: textData || 'ताज़ा समाचार एवं बड़ी ख़बरें'
+          }
+        };
+      } catch {
+        payload = {};
       }
     }
   }
-  return false;
-}
-
-/**
- * Robust notification display logic for both FCM and direct Push payloads.
- * Always resolves absolute URLs and ensures compliance with Android notification tray standards.
- */
-async function displayNotificationFromPayload(payload) {
-  if (!payload) return;
 
   const data = payload.data || {};
   const notification = payload.notification || {};
-  const origin = self.location ? self.location.origin : '';
+  const webpushNotif = payload.webpush?.notification || {};
 
   // 1. Extract Title & Body
   const title = (
     data.title ||
+    webpushNotif.title ||
     notification.title ||
     payload.title ||
     'दमोह डेली न्यूज़ नेटवर्क'
@@ -78,31 +70,34 @@ async function displayNotificationFromPayload(payload) {
 
   const body = (
     data.body ||
+    webpushNotif.body ||
     notification.body ||
     payload.body ||
     'ताज़ा समाचार एवं बड़ी ख़बरें'
   ).trim();
 
   // 2. Extract and resolve target navigation URL
-  const rawUrl = data.url || data.targetUrl || (data.articleSlug ? `/article/${data.articleSlug}` : '/') || notification.click_action || '/';
-  let targetUrl = rawUrl;
+  const rawUrl = 
+    data.targetUrl || 
+    data.url || 
+    (data.articleSlug ? `/article/${data.articleSlug}` : '') || 
+    payload.fcmOptions?.link ||
+    payload.webpush?.fcm_options?.link ||
+    notification.click_action || 
+    '/';
+
+  let targetUrl = '/';
   try {
     targetUrl = new URL(rawUrl, origin).href;
   } catch {
-    targetUrl = origin ? `${origin}/` : '/';
+    targetUrl = `${origin}/`;
   }
 
   // 3. Extract and resolve absolute image, icon & badge URLs
-  let iconUrl = '/icon-192-v2.png';
-  let badgeUrl = '/favicon-32x32-v2.png';
-  try {
-    iconUrl = new URL('/icon-192-v2.png', origin).href;
-    badgeUrl = new URL('/favicon-32x32-v2.png', origin).href;
-  } catch {
-    // fallback to relative if URL constructor fails
-  }
+  let iconUrl = `${origin}/icon-192-v2.png`;
+  let badgeUrl = `${origin}/favicon-32x32-v2.png`;
 
-  let imageUrl = data.imageUrl || data.image || notification.image || payload.image || undefined;
+  let imageUrl = data.imageUrl || data.image || webpushNotif.image || notification.image || payload.image || undefined;
   if (imageUrl) {
     try {
       if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://') && !imageUrl.startsWith('data:')) {
@@ -115,11 +110,11 @@ async function displayNotificationFromPayload(payload) {
 
   // 4. Determine unique tag and priority
   const notifId = data.id || data.tag || payload.fcmMessageId || payload.from || `ddn-${Date.now()}`;
-  const tag = data.tag || `ddn-${data.id || notifId}`;
+  const tag = data.tag || `ddn-${notifId}`;
   const priority = data.priority || 'normal';
   const isHighPriority = priority === 'urgent' || priority === 'breaking';
 
-  // 5. Construct full standard NotificationOptions
+  // 5. Construct full standard NotificationOptions for Android system tray
   const notificationOptions = {
     body,
     icon: iconUrl,
@@ -128,7 +123,7 @@ async function displayNotificationFromPayload(payload) {
     tag,
     renotify: true,
     requireInteraction: isHighPriority,
-    vibrate: [200, 100, 200],
+    vibrate: [200, 100, 200, 100, 200],
     data: {
       url: targetUrl,
       id: notifId,
@@ -137,7 +132,7 @@ async function displayNotificationFromPayload(payload) {
       timestamp: Date.now()
     },
     actions: [
-      { action: 'open', title: 'पूरा पढ़ें (Read Article)' },
+      { action: 'open', title: 'पूरा पढ़ें (Read)' },
       { action: 'close', title: 'बंद करें (Dismiss)' }
     ]
   };
@@ -146,84 +141,13 @@ async function displayNotificationFromPayload(payload) {
   return self.registration.showNotification(title, notificationOptions);
 }
 
-// 1. Lifecycle - Install: skip waiting immediately
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-});
-
-// 2. Lifecycle - Activate: claim clients immediately and purge legacy caches
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    Promise.all([
-      self.clients.claim(),
-      'caches' in self ? caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName.includes('damoh') || cacheName.includes('workbox') || cacheName.includes('sw-')) {
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      }) : Promise.resolve()
-    ])
-  );
-});
-
-// 3. Handle Firebase Cloud Messaging Background Messages (Firebase Web SDK)
-if (messaging) {
-  try {
-    messaging.onBackgroundMessage((payload) => {
-      console.log('[SW] Firebase onBackgroundMessage event:', payload);
-      const uniqueKey = payload.data?.id || payload.data?.tag || payload.fcmMessageId || `fcm_${payload.data?.title || ''}_${payload.data?.body || ''}`;
-      if (isDuplicateNotification(uniqueKey)) {
-        console.log('[SW] onBackgroundMessage already handled, avoiding duplicate');
-        return Promise.resolve();
-      }
-      return displayNotificationFromPayload(payload);
-    });
-  } catch (err) {
-    console.warn('[SW] Error attaching onBackgroundMessage:', err);
-  }
-}
-
-// 4. Native Push Event Handler (Universal Android Background Web Push Handler)
+// 3. Native Universal Push Event Handler (Universal Android Background Web Push Handler)
 self.addEventListener('push', (event) => {
-  console.log('[SW] Native push event received');
-  if (!event.data) {
-    console.warn('[SW] Push event with empty payload');
-    return;
-  }
-
-  event.waitUntil(
-    (async () => {
-      let payload;
-      try {
-        payload = event.data.json();
-      } catch (err) {
-        payload = {
-          data: {
-            title: 'दमोह डेली न्यूज़',
-            body: event.data.text() || 'ताज़ा समाचार'
-          }
-        };
-      }
-
-      // Check deduplication
-      const data = payload.data || {};
-      const notif = payload.notification || {};
-      const uniqueKey = data.id || data.tag || payload.fcmMessageId || `push_${data.title || notif.title || ''}_${data.body || notif.body || ''}`;
-
-      if (isDuplicateNotification(uniqueKey)) {
-        console.log('[SW] Push event already displayed, skipping duplicate');
-        return;
-      }
-
-      await displayNotificationFromPayload(payload);
-    })()
-  );
+  console.log('[SW] Push event received in Service Worker');
+  event.waitUntil(handleBackgroundPush(event));
 });
 
-// 5. Handle Notification Click & Window Focusing / Navigation
+// 4. Handle Notification Click & Window Focusing / Navigation
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -232,12 +156,12 @@ self.addEventListener('notificationclick', (event) => {
   }
 
   const rawUrl = event.notification.data?.url || '/';
-  const origin = self.location ? self.location.origin : '';
+  const origin = self.location ? self.location.origin : 'https://www.damohdailynewsnetwork.in';
   let targetUrl = rawUrl;
   try {
     targetUrl = new URL(rawUrl, origin).href;
   } catch {
-    targetUrl = origin ? `${origin}/` : '/';
+    targetUrl = `${origin}/`;
   }
 
   event.waitUntil(
@@ -263,7 +187,8 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// 6. Handle Notification Dismissal
+// 5. Handle Notification Dismissal
 self.addEventListener('notificationclose', (event) => {
   console.log('[SW] Notification closed by user:', event.notification.tag);
 });
+

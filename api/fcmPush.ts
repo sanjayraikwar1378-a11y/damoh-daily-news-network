@@ -276,13 +276,17 @@ function parseServiceAccount(raw: string | undefined): any | null {
               title: String(formattedTitle),
               body: String(payload.body),
               url: String(targetUrl),
+              targetUrl: String(targetUrl),
               imageUrl: String(payload.imageUrl || ""),
+              icon: "/icon-192-v2.png",
+              badge: "/favicon-32x32-v2.png",
               category: String(payload.category || "local"),
               priority: String(payload.priority || "normal"),
               articleId: String(payload.articleId || ""),
               articleSlug: String(payload.articleSlug || ""),
               liveUpdateId: String(payload.liveUpdateId || ""),
-              tag: notificationTag
+              tag: String(notificationTag),
+              timestamp: String(Date.now())
             },
             webpush: {
               headers: {

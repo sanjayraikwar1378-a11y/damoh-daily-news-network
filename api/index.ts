@@ -325,20 +325,14 @@ async function getDefaultShareImageBuffer(): Promise<Buffer> {
       const rawLogo = fs.readFileSync(logoPath);
       const sharp = await getSharp();
       if (sharp) {
-        defaultShareImageBuffer = await sharp({
-          create: {
-            width: 1200,
-            height: 630,
-            channels: 4,
+        defaultShareImageBuffer = await sharp(rawLogo)
+          .rotate()
+          .resize(1200, 630, {
+            fit: 'contain',
             background: { r: 24, g: 24, b: 27, alpha: 1 }
-          }
-        })
-        .composite([{
-          input: await sharp(rawLogo).resize(960, 480, { fit: 'inside' }).toBuffer(),
-          gravity: 'center'
-        }])
-        .jpeg({ quality: 90, mozjpeg: true })
-        .toBuffer();
+          })
+          .jpeg({ quality: 90, mozjpeg: true })
+          .toBuffer();
 
         return defaultShareImageBuffer;
       } else {
@@ -367,55 +361,24 @@ async function createResizedImageBuffer(inputBuffer: Buffer, _targetMime: 'image
       return inputBuffer;
     }
 
-    const TARGET_WIDTH = 1200;
-    const TARGET_HEIGHT = 630;
-
-    const backgroundBuffer = await sharp(inputBuffer)
+    // Preserve the complete original image in its natural aspect ratio
+    // Auto-rotate for EXIF orientation, constrain max dimension to 1200px without enlargement,
+    // and encode as a high-quality clean progressive JPEG.
+    // Strictly NO blurred background, NO duplicate image, NO artificial cropping.
+    return await sharp(inputBuffer)
       .rotate()
-      .resize(TARGET_WIDTH, TARGET_HEIGHT, {
-        fit: 'cover',
-        position: 'center'
-      })
-      .blur(28)
-      .modulate({
-        brightness: 0.80,
-        saturation: 1.15
-      })
-      .toBuffer();
-
-    const foregroundBuffer = await sharp(inputBuffer)
-      .rotate()
-      .resize(TARGET_WIDTH, TARGET_HEIGHT, {
+      .resize(1200, 1200, {
         fit: 'inside',
-        withoutEnlargement: false
+        withoutEnlargement: true
       })
-      .toBuffer();
-
-    return await sharp(backgroundBuffer)
-      .composite([
-        {
-          input: foregroundBuffer,
-          gravity: 'center'
-        }
-      ])
       .jpeg({
-        quality: 86,
+        quality: 88,
         mozjpeg: true,
         progressive: true
       })
       .toBuffer();
   } catch (err) {
-    console.warn("sharp image generation warning:", err);
-    try {
-      const sharp = await getSharp();
-      if (sharp) {
-        return await sharp(inputBuffer)
-          .rotate()
-          .resize(1200, 630, { fit: 'cover', position: 'center' })
-          .jpeg({ quality: 85, mozjpeg: true })
-          .toBuffer();
-      }
-    } catch {}
+    console.warn("sharp image processing warning, returning raw buffer:", err);
     return inputBuffer;
   }
 }
@@ -1158,16 +1121,20 @@ async function dispatchFCMPushNotification(payload: FCMPushPayload): Promise<any
                 ...(payload.imageUrl ? { image: payload.imageUrl } : {})
               },
               data: {
-                title: formattedTitle,
-                body: payload.body,
-                tag: notificationTag,
-                targetUrl: targetUrl,
-                priority: payload.priority || "normal",
-                category: payload.category || "breaking",
-                articleId: payload.articleId || "",
-                articleSlug: payload.articleSlug || "",
-                liveUpdateId: payload.liveUpdateId || "",
-                imageUrl: payload.imageUrl || "",
+                id: String(payload.id || notificationTag),
+                title: String(formattedTitle),
+                body: String(payload.body),
+                url: String(targetUrl),
+                targetUrl: String(targetUrl),
+                tag: String(notificationTag),
+                priority: String(payload.priority || "normal"),
+                category: String(payload.category || "breaking"),
+                articleId: String(payload.articleId || ""),
+                articleSlug: String(payload.articleSlug || ""),
+                liveUpdateId: String(payload.liveUpdateId || ""),
+                imageUrl: String(payload.imageUrl || ""),
+                icon: "/icon-192-v2.png",
+                badge: "/favicon-32x32-v2.png",
                 timestamp: String(Date.now())
               },
               webpush: {
@@ -1507,7 +1474,7 @@ export function createExpressApp() {
           const cleanUrl = rawImage.split('?')[0].split('#')[0];
           let directTransformUrl = cleanUrl.replace(
             /\/image\/upload\/(?:v\d+\/)?/,
-            '/image/upload/c_pad,w_1200,h_630,b_gen_fill:ignore-foreground_true,f_jpg,q_88/'
+            '/image/upload/c_limit,w_1200,h_1200,f_jpg,q_auto:good/'
           );
           if (!directTransformUrl.toLowerCase().endsWith('.jpg') && !directTransformUrl.toLowerCase().endsWith('.jpeg')) {
             directTransformUrl = directTransformUrl.replace(/\.[a-zA-Z0-9]+$/, '') + '.jpg';
