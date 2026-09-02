@@ -36,6 +36,8 @@ import {
 import { isWithin48Hours, isWithin24Hours } from '@/lib/utils';
 import { saveArticlesToCache, getStoredArticlesList, saveArticlesListToStorage } from '@/lib/articleCache';
 import { sanitizeSlug, generateUniqueSlug, createSlug, stripGeneratedSuffixes, cleanArticleSlugIfNeeded } from '@/lib/slug';
+import { notifyIndexNow } from '@/lib/indexnow';
+import { dispatchArticlePushNotification } from '@/lib/pushNotifications';
 
 export { createSlug, sanitizeSlug, generateUniqueSlug, stripGeneratedSuffixes };
 
@@ -726,6 +728,17 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     await setDoc(doc(db, "articles", id), docData);
 
     setArticles(prev => [newArticle, ...prev.filter(a => a.id !== id)]);
+
+    // Automatically notify IndexNow and dispatch Server-Side Web Push when new article is published
+    if (newArticle.status === 'published' && newArticle.slug) {
+      notifyIndexNow(newArticle.slug).catch(err => {
+        console.warn("[IndexNow] Background auto-submit warning on addArticle:", err);
+      });
+      dispatchArticlePushNotification(newArticle).catch(err => {
+        console.warn("[Push] Automatic background push notification dispatch warning on addArticle:", err);
+      });
+    }
+
     return newArticle;
   };
 
@@ -778,6 +791,23 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         ...updatedData
       } as Article;
     }));
+
+    // Automatically notify IndexNow and Server-Side Web Push whenever an existing article is updated/published
+    const isPublished = (updatedData.status === 'published') || 
+      (existing?.status === 'published' && updatedData.status !== 'draft' && updatedData.status !== 'trash');
+    const wasJustPublished = updatedData.status === 'published' && existing?.status !== 'published';
+
+    if (isPublished && finalSlug) {
+      notifyIndexNow(finalSlug).catch(err => {
+        console.warn("[IndexNow] Background auto-submit warning on updateArticle:", err);
+      });
+      // If the article transitioned to published, send background push
+      if (wasJustPublished) {
+        dispatchArticlePushNotification({ ...existing, ...updatedData, slug: finalSlug } as any).catch(err => {
+          console.warn("[Push] Background auto-push warning on updateArticle:", err);
+        });
+      }
+    }
   };
 
   const deleteArticle = (id: string) => {
@@ -820,6 +850,16 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       }
       return a;
     }));
+
+    // Automatically notify IndexNow when articles are bulk-published
+    if (status === 'published') {
+      const publishedSlugs = articles.filter(a => ids.includes(a.id)).map(a => a.slug).filter(Boolean);
+      if (publishedSlugs.length > 0) {
+        notifyIndexNow(publishedSlugs).catch(err => {
+          console.warn("[IndexNow] Background auto-submit warning on bulkUpdateStatus:", err);
+        });
+      }
+    }
   };
 
   const bulkDeleteArticles = (ids: string[]) => {

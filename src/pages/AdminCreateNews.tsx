@@ -27,8 +27,8 @@ export function AdminCreateNews() {
   const [showMediaPicker, setShowMediaPicker] = useState(false)
   const [previewModal, setPreviewModal] = useState(false)
 
-  // Notification controls state
-  const [sendPush, setSendPush] = useState(false)
+  // Notification controls state (Default to TRUE so published news automatically sends push)
+  const [sendPush, setSendPush] = useState(true)
   const [notifPriority, setNotifPriority] = useState<NotificationPriority>("normal")
   const [notifCategory, setNotifCategory] = useState<NotificationCategory>("local")
 

@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import crypto from "crypto";
 import fs from "fs";
+import { submitToIndexNow, INDEXNOW_KEY, INDEXNOW_HOST, INDEXNOW_KEY_LOCATION } from "./indexnow";
 
 // ============================================================================
 // CONSTANTS & CATEGORIES
@@ -119,6 +120,11 @@ function getBaseUrl(req: express.Request): string {
   const hostHeader = (req.headers["x-forwarded-host"] as string) || req.headers.host || (process.env.VERCEL_URL ? `${process.env.VERCEL_URL}` : "www.damohdailynewsnetwork.in");
   const host = hostHeader.split(",")[0].trim();
 
+  // Consistent canonical domain enforcement
+  if (host === "damohdailynewsnetwork.in" || host === "www.damohdailynewsnetwork.in") {
+    return "https://www.damohdailynewsnetwork.in";
+  }
+
   let proto = (req.headers["x-forwarded-proto"] as string) || (req.headers["x-forwarded-ssl"] === "on" ? "https" : "");
   if (proto) {
     proto = proto.split(",")[0].trim();
@@ -129,29 +135,58 @@ function getBaseUrl(req: express.Request): string {
   return `${proto}://${host}`;
 }
 
-// In-memory caches for fast responses
+// In-memory caches for fast responses with instant invalidation capability
 const serverArticleCache = new Map<string, { data: Record<string, any>; timestamp: number }>();
-const SERVER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes TTL
+const SERVER_CACHE_TTL = 3 * 60 * 1000; // 3 minutes fallback TTL
 
 let feedArticlesCache: { data: Array<Record<string, any>>; timestamp: number } | null = null;
-const FEED_CACHE_TTL = 3 * 60 * 1000; // 3 minutes TTL
+const FEED_CACHE_TTL = 30 * 1000; // 30 seconds fallback TTL for rapid indexing freshness
 
-async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
+let lastPurgeTime = 0;
+const PURGE_THROTTLE_MS = 3000; // Minimum 3s between actual cache wipes to prevent thrashing
+
+function invalidateFeedArticlesCache(): boolean {
   const now = Date.now();
-  if (feedArticlesCache && (now - feedArticlesCache.timestamp < FEED_CACHE_TTL)) {
+  if (now - lastPurgeTime < PURGE_THROTTLE_MS) {
+    // Throttled: Cache was already purged moments ago
+    return false;
+  }
+  lastPurgeTime = now;
+  feedArticlesCache = null;
+  serverArticleCache.clear();
+  return true;
+}
+
+async function getAllArticlesForFeed(forceRefresh = false): Promise<Array<Record<string, any>>> {
+  const now = Date.now();
+  if (!forceRefresh && feedArticlesCache && (now - feedArticlesCache.timestamp < FEED_CACHE_TTL)) {
     return feedArticlesCache.data;
   }
 
   const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "damoh-daily-news";
 
   try {
-    const listUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles?pageSize=100`;
-    const response = await fetch(listUrl, { signal: AbortSignal.timeout(6000) });
+    const articles: Array<Record<string, any>> = [];
+    let pageToken = "";
+    let hasMore = true;
+    let iterations = 0;
+    const maxIterations = 20; // Allows up to 6,000 documents across Firestore pages without memory bottleneck
 
-    if (response.ok) {
+    while (hasMore && iterations < maxIterations) {
+      iterations++;
+      let listUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles?pageSize=300`;
+      if (pageToken) {
+        listUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
+      }
+
+      const response = await fetch(listUrl, { signal: AbortSignal.timeout(8000) });
+
+      if (!response.ok) {
+        break;
+      }
+
       const data = await response.json();
       const docs = data.documents || [];
-      const articles: Array<Record<string, any>> = [];
 
       for (const doc of docs) {
         if (!doc || !doc.fields) continue;
@@ -165,19 +200,29 @@ async function getAllArticlesForFeed(): Promise<Array<Record<string, any>>> {
         }
       }
 
-      if (articles.length > 0) {
-        articles.sort((a, b) => {
-          const tA = new Date(a.publishedAt || a.createdAt || 0).getTime();
-          const tB = new Date(b.publishedAt || b.createdAt || 0).getTime();
-          return tB - tA;
-        });
-
-        feedArticlesCache = { data: articles, timestamp: now };
-        return articles;
+      if (data.nextPageToken) {
+        pageToken = data.nextPageToken;
+      } else {
+        hasMore = false;
       }
+    }
+
+    if (articles.length > 0) {
+      articles.sort((a, b) => {
+        const tA = new Date(a.publishedAt || a.createdAt || 0).getTime();
+        const tB = new Date(b.publishedAt || b.createdAt || 0).getTime();
+        return tB - tA;
+      });
+
+      feedArticlesCache = { data: articles, timestamp: now };
+      return articles;
     }
   } catch (err) {
     console.warn("Could not fetch articles collection from Firestore for feed:", err);
+  }
+
+  if (feedArticlesCache && feedArticlesCache.data.length > 0) {
+    return feedArticlesCache.data;
   }
 
   return MOCK_ARTICLES_FALLBACK;
@@ -407,6 +452,18 @@ Allow: /social-preview.jpg
 Disallow: /admin/
 Disallow: /api/
 
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-News
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
 User-agent: facebookexternalhit
 Allow: /
 
@@ -419,11 +476,10 @@ Allow: /
 User-agent: TelegramBot
 Allow: /
 
-User-agent: Googlebot-Image
-Allow: /
-
-# Sitemaps and Feeds for Google Search Console & Google News
+# Sitemaps for Google Search Console, Google News, and Bing
 Sitemap: ${baseUrl}/sitemap.xml
+Sitemap: ${baseUrl}/sitemap-news.xml
+Sitemap: ${baseUrl}/sitemap-articles.xml
 `;
 }
 
@@ -457,8 +513,63 @@ function isPubliclyPublishedArticle(art: Record<string, any>): boolean {
   return true;
 }
 
-async function generateSitemapXml(baseUrl: string): Promise<string> {
-  const articles = await getAllArticlesForFeed();
+// 1. Google News Specific Sitemap (Strictly compliant with Google's 48-hour news window)
+async function generateGoogleNewsSitemapXml(baseUrl: string): Promise<string> {
+  const allArticles = await getAllArticlesForFeed();
+  const now = Date.now();
+  const twoDaysAgo = now - (48 * 60 * 60 * 1000); // Official Google News 2-day threshold
+
+  const eligibleArticles = allArticles.filter(art => {
+    if (!art.slug && !art.id) return false;
+    if (!isPubliclyPublishedArticle(art)) return false;
+    const pubTime = new Date(art.publishedAt || art.createdAt || 0).getTime();
+    return pubTime >= twoDaysAgo;
+  });
+
+  // Safe fallback if no articles were published within the last 48 hours: include latest 10
+  const feedList = eligibleArticles.length > 0
+    ? eligibleArticles
+    : allArticles.filter(isPubliclyPublishedArticle).slice(0, 10);
+
+  let urlsXml = "";
+  for (const art of feedList) {
+    const articleSlug = art.slug || art.id;
+    const pubDate = art.publishedAt || new Date().toISOString();
+    const title = escapeHtml(art.title || "Damoh Daily News Network");
+    const articleUrl = `${baseUrl}/article/${articleSlug}`;
+    const image = getArticleImageUrl(art, articleSlug, baseUrl);
+
+    urlsXml += `
+  <url>
+    <loc>${articleUrl}</loc>
+    <lastmod>${art.updatedAt || pubDate}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>1.0</priority>
+    <news:news>
+      <news:publication>
+        <news:name>Damoh Daily News Network</news:name>
+        <news:language>hi</news:language>
+      </news:publication>
+      <news:publication_date>${new Date(pubDate).toISOString()}</news:publication_date>
+      <news:title>${title}</news:title>
+    </news:news>
+    ${image ? `<image:image>
+      <image:loc>${escapeHtml(image)}</image:loc>
+      <image:title>${title}</image:title>
+    </image:image>` : ''}
+  </url>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+${urlsXml}
+</urlset>`;
+}
+
+// 2. Categories & Core Pages Sitemap
+async function generateCategoriesSitemapXml(baseUrl: string): Promise<string> {
   const categories = INITIAL_CATEGORIES;
   const nowIso = new Date().toISOString();
 
@@ -480,11 +591,45 @@ async function generateSitemapXml(baseUrl: string): Promise<string> {
   </url>`;
   }
 
-  for (const art of articles) {
+  // Essential institutional & editorial pages
+  const staticPages = [
+    { path: '/latest-news', changefreq: 'always', priority: '0.9' },
+    { path: '/about', changefreq: 'weekly', priority: '0.6' },
+    { path: '/contact', changefreq: 'weekly', priority: '0.6' },
+    { path: '/privacy-policy', changefreq: 'monthly', priority: '0.5' },
+    { path: '/terms', changefreq: 'monthly', priority: '0.5' },
+    { path: '/editorial-policy', changefreq: 'monthly', priority: '0.5' }
+  ];
+
+  for (const page of staticPages) {
+    urlsXml += `
+  <url>
+    <loc>${baseUrl}${page.path}</loc>
+    <lastmod>${nowIso}</lastmod>
+    <changefreq>${page.changefreq}</changefreq>
+    <priority>${page.priority}</priority>
+  </url>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urlsXml}
+</urlset>`;
+}
+
+// 3. Paginated Articles Archive Sitemap (Supports unlimited published articles beyond 100)
+async function generateArticlesSitemapXml(baseUrl: string, page = 1, pageSize = 1000): Promise<string> {
+  const allArticles = await getAllArticlesForFeed();
+  const published = allArticles.filter(isPubliclyPublishedArticle);
+
+  const startIndex = Math.max(0, (page - 1) * pageSize);
+  const pageArticles = published.slice(startIndex, startIndex + pageSize);
+
+  let urlsXml = "";
+  for (const art of pageArticles) {
     if (!art.slug && !art.id) continue;
-    if (!isPubliclyPublishedArticle(art)) continue;
     const articleSlug = art.slug || art.id;
-    const pubDate = art.publishedAt || nowIso;
+    const pubDate = art.publishedAt || new Date().toISOString();
     const title = escapeHtml(art.title || "Damoh News");
     const articleUrl = `${baseUrl}/article/${articleSlug}`;
     const image = getArticleImageUrl(art, articleSlug, baseUrl);
@@ -493,16 +638,123 @@ async function generateSitemapXml(baseUrl: string): Promise<string> {
   <url>
     <loc>${articleUrl}</loc>
     <lastmod>${art.updatedAt || pubDate}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-    <news:news>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    ${image ? `<image:image>
+      <image:loc>${escapeHtml(image)}</image:loc>
+      <image:title>${title}</image:title>
+    </image:image>` : ''}
+  </url>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+${urlsXml}
+</urlset>`;
+}
+
+// 4. Primary Sitemap (`/sitemap.xml` - Intelligent unified sitemap or sitemapindex based on archive scale)
+async function generateSitemapXml(baseUrl: string): Promise<string> {
+  const allArticles = await getAllArticlesForFeed();
+  const published = allArticles.filter(isPubliclyPublishedArticle);
+
+  // If archive size is over 1,000 articles, deliver a clean Google Sitemap Index
+  if (published.length > 1000) {
+    const totalPages = Math.ceil(published.length / 1000);
+    const nowIso = new Date().toISOString();
+
+    let sitemapsXml = `
+  <sitemap>
+    <loc>${baseUrl}/sitemap-news.xml</loc>
+    <lastmod>${nowIso}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${baseUrl}/sitemap-categories.xml</loc>
+    <lastmod>${nowIso}</lastmod>
+  </sitemap>`;
+
+    for (let p = 1; p <= totalPages; p++) {
+      sitemapsXml += `
+  <sitemap>
+    <loc>${baseUrl}/sitemap-articles-${p}.xml</loc>
+    <lastmod>${published[0]?.updatedAt || published[0]?.publishedAt || nowIso}</lastmod>
+  </sitemap>`;
+    }
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${sitemapsXml}
+</sitemapindex>`;
+  }
+
+  // Unified complete sitemap for standard scale: Includes core pages + Google News for recent 48h + all articles
+  const categories = INITIAL_CATEGORIES;
+  const nowIso = new Date().toISOString();
+  const now = Date.now();
+  const twoDaysAgo = now - (48 * 60 * 60 * 1000);
+
+  let urlsXml = `
+  <url>
+    <loc>${baseUrl}/</loc>
+    <lastmod>${nowIso}</lastmod>
+    <changefreq>always</changefreq>
+    <priority>1.0</priority>
+  </url>`;
+
+  for (const cat of categories) {
+    urlsXml += `
+  <url>
+    <loc>${baseUrl}/category/${cat.slug}</loc>
+    <lastmod>${nowIso}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+  }
+
+  const staticPages = [
+    { path: '/latest-news', changefreq: 'always', priority: '0.9' },
+    { path: '/about', changefreq: 'weekly', priority: '0.6' },
+    { path: '/contact', changefreq: 'weekly', priority: '0.6' },
+    { path: '/privacy-policy', changefreq: 'monthly', priority: '0.5' },
+    { path: '/terms', changefreq: 'monthly', priority: '0.5' },
+    { path: '/editorial-policy', changefreq: 'monthly', priority: '0.5' }
+  ];
+
+  for (const page of staticPages) {
+    urlsXml += `
+  <url>
+    <loc>${baseUrl}${page.path}</loc>
+    <lastmod>${nowIso}</lastmod>
+    <changefreq>${page.changefreq}</changefreq>
+    <priority>${page.priority}</priority>
+  </url>`;
+  }
+
+  for (const art of published) {
+    if (!art.slug && !art.id) continue;
+    const articleSlug = art.slug || art.id;
+    const pubDate = art.publishedAt || nowIso;
+    const title = escapeHtml(art.title || "Damoh Daily News Network");
+    const articleUrl = `${baseUrl}/article/${articleSlug}`;
+    const image = getArticleImageUrl(art, articleSlug, baseUrl);
+    const pubTime = new Date(art.publishedAt || art.createdAt || 0).getTime();
+    const isRecentGoogleNews = pubTime >= twoDaysAgo;
+
+    urlsXml += `
+  <url>
+    <loc>${articleUrl}</loc>
+    <lastmod>${art.updatedAt || pubDate}</lastmod>
+    <changefreq>${isRecentGoogleNews ? 'hourly' : 'weekly'}</changefreq>
+    <priority>${isRecentGoogleNews ? '0.9' : '0.8'}</priority>
+    ${isRecentGoogleNews ? `<news:news>
       <news:publication>
-        <news:name>Damoh Daily News</news:name>
+        <news:name>Damoh Daily News Network</news:name>
         <news:language>hi</news:language>
       </news:publication>
-      <news:publication_date>${pubDate}</news:publication_date>
+      <news:publication_date>${new Date(pubDate).toISOString()}</news:publication_date>
       <news:title>${title}</news:title>
-    </news:news>
+    </news:news>` : ''}
     ${image ? `<image:image>
       <image:loc>${escapeHtml(image)}</image:loc>
       <image:title>${title}</image:title>
@@ -639,11 +891,13 @@ function injectArticleMetaTags(
     },
     "publisher": {
       "@type": "NewsMediaOrganization",
-      "name": "Damoh Daily News",
+      "name": "Damoh Daily News Network",
       "url": baseUrl,
       "logo": {
         "@type": "ImageObject",
-        "url": `${baseUrl}/icon-512.png`
+        "url": `${baseUrl}/logo.png`,
+        "width": 1024,
+        "height": 512
       }
     }
   };
@@ -766,9 +1020,14 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
   const jsonLdOrganization = {
     "@context": "https://schema.org",
     "@type": "NewsMediaOrganization",
-    "name": "Damoh Daily News",
+    "name": "Damoh Daily News Network",
     "url": baseUrl,
-    "logo": `${baseUrl}/icon-512.png`
+    "logo": {
+      "@type": "ImageObject",
+      "url": `${baseUrl}/logo.png`,
+      "width": 1024,
+      "height": 512
+    }
   };
 
   const metaTagsHtml = `
@@ -1214,6 +1473,16 @@ async function dispatchFCMPushNotification(payload: FCMPushPayload): Promise<any
 export function createExpressApp() {
   const app = express();
 
+  // Canonical Domain Enforcement (Redirect naked root domain to preferred www domain)
+  app.use((req, res, next) => {
+    const hostHeader = (req.headers["x-forwarded-host"] as string) || req.headers.host || "";
+    const host = hostHeader.split(",")[0].trim().toLowerCase();
+    if (host === "damohdailynewsnetwork.in") {
+      return res.redirect(301, `https://www.damohdailynewsnetwork.in${req.originalUrl}`);
+    }
+    next();
+  });
+
   // Basic Security & Compatibility Headers
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -1620,6 +1889,50 @@ export function createExpressApp() {
     }
   });
 
+  // IndexNow API Key Verification File Route (Directly serves the 32-char key file)
+  app.get(["/2710f5ce0d40420ca1296b880592e549.txt", "/:key([a-f0-9]{32}).txt"], (req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.status(200).send(INDEXNOW_KEY);
+  });
+
+  // IndexNow Instant Search Engine Indexing Endpoint
+  app.all(["/api/indexnow", "/api/indexnow/submit"], async (req, res) => {
+    // CORS support
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
+
+    if (req.method === "GET") {
+      return res.status(200).json({
+        service: "IndexNow Submitter",
+        host: INDEXNOW_HOST,
+        keyLocation: INDEXNOW_KEY_LOCATION,
+        status: "active"
+      });
+    }
+
+    if (req.method === "POST") {
+      try {
+        const { urls, url, slug, urlList } = req.body || {};
+        const targetList = urls || urlList || url || slug || [];
+        const baseUrl = getBaseUrl(req);
+        const host = baseUrl.replace(/^https?:\/\//, '').split('/')[0] || INDEXNOW_HOST;
+        const result = await submitToIndexNow(targetList, host);
+        return res.status(result.success ? 200 : 207).json(result);
+      } catch (err: any) {
+        console.warn("[IndexNow Express Route] Error:", err);
+        return res.status(200).json({ success: false, error: err?.message || "IndexNow submission failed" });
+      }
+    }
+
+    return res.status(405).json({ error: "Method not allowed" });
+  });
+
   // Robots.txt
   app.get("/robots.txt", (req, res) => {
     try {
@@ -1633,12 +1946,27 @@ export function createExpressApp() {
     }
   });
 
-  // Sitemap.xml
+  // Cache Invalidation & Instant Purge Endpoint (Safe & throttled against abuse)
+  app.all(["/api/cache/purge", "/api/cache/invalidate", "/api/invalidate-feed-cache"], (_req, res) => {
+    try {
+      const purged = invalidateFeedArticlesCache();
+      return res.status(200).json({
+        success: true,
+        status: purged ? "purged" : "throttled",
+        message: purged ? "Feed & article cache successfully invalidated." : "Cache already refreshed recently."
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Cache purge failed" });
+    }
+  });
+
+  // Sitemap.xml (Master Sitemap or Sitemap Index)
   app.get("/sitemap.xml", async (req, res) => {
     try {
       const baseUrl = getBaseUrl(req);
       const xml = await generateSitemapXml(baseUrl);
       res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=120");
       return res.status(200).send(xml);
     } catch (err) {
       console.warn("Error generating sitemap.xml:", err);
@@ -1647,17 +1975,64 @@ export function createExpressApp() {
     }
   });
 
-  // RSS Feed
+  // Google News Sitemap
+  app.get(["/sitemap-news.xml", "/news-sitemap.xml"], async (req, res) => {
+    try {
+      const baseUrl = getBaseUrl(req);
+      const xml = await generateGoogleNewsSitemapXml(baseUrl);
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=120");
+      return res.status(200).send(xml);
+    } catch (err) {
+      console.warn("Error generating sitemap-news.xml:", err);
+      const baseUrl = getBaseUrl(req);
+      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${baseUrl}/</loc></url></urlset>`);
+    }
+  });
+
+  // Categories & Static Pages Sitemap
+  app.get("/sitemap-categories.xml", async (req, res) => {
+    try {
+      const baseUrl = getBaseUrl(req);
+      const xml = await generateCategoriesSitemapXml(baseUrl);
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=300, s-maxage=600, stale-while-revalidate=1200");
+      return res.status(200).send(xml);
+    } catch (err) {
+      console.warn("Error generating sitemap-categories.xml:", err);
+      const baseUrl = getBaseUrl(req);
+      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${baseUrl}/</loc></url></urlset>`);
+    }
+  });
+
+  // Paginated Articles Sitemaps (/sitemap-articles.xml, /sitemap-articles-1.xml, etc.)
+  app.get(["/sitemap-articles.xml", "/sitemap-articles-:page.xml"], async (req, res) => {
+    try {
+      const page = parseInt(req.params.page || "1", 10) || 1;
+      const baseUrl = getBaseUrl(req);
+      const xml = await generateArticlesSitemapXml(baseUrl, page, 1000);
+      res.setHeader("Content-Type", "application/xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=60, s-maxage=120, stale-while-revalidate=300");
+      return res.status(200).send(xml);
+    } catch (err) {
+      console.warn("Error generating sitemap-articles.xml:", err);
+      const baseUrl = getBaseUrl(req);
+      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${baseUrl}/</loc></url></urlset>`);
+    }
+  });
+
+  // RSS Feed (Instant fresh news feed)
   app.get(["/rss.xml", "/feed.xml", "/rss"], async (req, res) => {
     try {
       const baseUrl = getBaseUrl(req);
       const xml = await generateRssFeedXml(baseUrl);
       res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=120");
       return res.status(200).send(xml);
     } catch (err) {
       console.warn("Error generating RSS feed:", err);
       const baseUrl = getBaseUrl(req);
-      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Damoh Daily News</title><link>${baseUrl}</link></channel></rss>`);
+      return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Damoh Daily News Network</title><link>${baseUrl}</link></channel></rss>`);
     }
   });
 
@@ -1714,6 +2089,7 @@ export function createExpressApp() {
 export {
   getArticleBySlug,
   getAllArticlesForFeed,
+  invalidateFeedArticlesCache,
   createResizedImageBuffer,
   injectArticleMetaTags,
   injectDefaultMetaTags,

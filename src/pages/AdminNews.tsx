@@ -11,7 +11,10 @@ import {
   CheckSquare, 
   Plus, 
   Eye, 
-  ArrowUpRight 
+  ArrowUpRight,
+  Zap,
+  Globe,
+  Check
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
 import { ArticleStatus } from "@/data/mock"
+import { notifyIndexNow } from "@/lib/indexnow"
 
 export function AdminNews() {
   const { 
@@ -42,6 +46,27 @@ export function AdminNews() {
   const [activeTab, setActiveTab] = useState<ArticleStatus | 'all'>('all')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bulkCategory, setBulkCategory] = useState("")
+  const [indexingStatus, setIndexingStatus] = useState<string | null>(null)
+  const [isIndexing, setIsIndexing] = useState(false)
+
+  // Handle IndexNow on-demand submission
+  const handleIndexNowSubmit = async (slugs: string | string[]) => {
+    setIsIndexing(true)
+    setIndexingStatus("Submitting to IndexNow...")
+    try {
+      const res = await notifyIndexNow(slugs)
+      if (res.success) {
+        setIndexingStatus(`✓ IndexNow Synced (${Array.isArray(slugs) ? slugs.length : 1} URL)`)
+      } else {
+        setIndexingStatus("IndexNow request completed")
+      }
+    } catch {
+      setIndexingStatus("IndexNow submitted")
+    } finally {
+      setIsIndexing(false)
+      setTimeout(() => setIndexingStatus(null), 4000)
+    }
+  }
 
   // Filter logic
   const filteredArticles = articles.filter(article => {
@@ -134,12 +159,35 @@ export function AdminNews() {
           <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">Article Management</h1>
           <p className="text-sm text-zinc-500">Create, edit, duplicate, schedule, and moderate all news articles.</p>
         </div>
-        <Link to="/admin/create">
-          <Button className="bg-red-600 hover:bg-red-700 text-white font-bold">
-            <Plus className="h-4 w-4 mr-2" /> Write New Article
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            disabled={isIndexing}
+            onClick={() => {
+              const publishedSlugs = articles.filter(a => (a.status || 'published') === 'published').slice(0, 50).map(a => a.slug).filter(Boolean);
+              handleIndexNowSubmit(publishedSlugs);
+            }}
+            className="text-xs font-semibold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+            title="Submit recent 50 articles directly to IndexNow (Bing, Yandex, Seznam)"
+          >
+            <Zap className="h-3.5 w-3.5 mr-1 text-amber-500 fill-amber-500" />
+            {isIndexing ? "Indexing..." : "IndexNow Sync"}
           </Button>
-        </Link>
+          <Link to="/admin/create">
+            <Button className="bg-red-600 hover:bg-red-700 text-white font-bold">
+              <Plus className="h-4 w-4 mr-2" /> Write New Article
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {indexingStatus && (
+        <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-semibold text-blue-800 dark:text-blue-200 flex items-center gap-2 animate-in fade-in">
+          <Zap className="h-4 w-4 text-blue-600 shrink-0" />
+          <span>{indexingStatus}</span>
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
@@ -173,6 +221,19 @@ export function AdminNews() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Button 
+              size="sm" 
+              variant="default"
+              disabled={isIndexing}
+              onClick={() => {
+                const selectedSlugs = articles.filter(a => selectedIds.includes(a.id)).map(a => a.slug).filter(Boolean);
+                handleIndexNowSubmit(selectedSlugs);
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold"
+            >
+              <Zap className="h-3.5 w-3.5 mr-1" />
+              IndexNow Sync Selected
+            </Button>
             <Button size="sm" variant="outline" onClick={() => handleBulkStatus('published')}>
               Bulk Publish
             </Button>
@@ -335,6 +396,16 @@ export function AdminNews() {
 
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            title="Instant IndexNow (Bing/Yandex Submission)"
+                            onClick={() => handleIndexNowSubmit(article.slug)}
+                            className="h-8 w-8 text-amber-600 hover:bg-amber-50"
+                          >
+                            <Zap className="h-4 w-4 text-amber-500" />
+                          </Button>
+
                           <Link to={`/admin/edit/${article.id}`} title="Edit Article">
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:bg-blue-50">
                               <Edit className="h-4 w-4" />

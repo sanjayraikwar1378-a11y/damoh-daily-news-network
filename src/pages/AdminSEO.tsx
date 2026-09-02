@@ -127,7 +127,12 @@ export function AdminSEO() {
   "@type": "NewsMediaOrganization",
   "name": form.siteName,
   "url": window.location.origin,
-  "logo": `${window.location.origin}/icon-512.png`,
+  "logo": {
+    "@type": "ImageObject",
+    "url": `${window.location.origin}/logo.png`,
+    "width": 1024,
+    "height": 512
+  },
   "sameAs": [
     siteSettings.facebookUrl,
     siteSettings.twitterUrl,

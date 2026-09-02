@@ -212,7 +212,9 @@ export function ArticleDetail() {
       }
 
       const cleanSlug = article.slug || article.id || slug || ""
-      const canonicalOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://damoh-daily-news-network.vercel.app'
+      const canonicalOrigin = typeof window !== 'undefined' 
+        ? (window.location.hostname.includes('damohdailynewsnetwork.in') ? 'https://www.damohdailynewsnetwork.in' : window.location.origin)
+        : 'https://www.damohdailynewsnetwork.in'
       const canonicalUrl = `${canonicalOrigin}/article/${cleanSlug}`
       const desc = article.excerpt || article.title
       const img = `${canonicalOrigin}/api/article-image/${encodeURIComponent(cleanSlug)}.jpg`
@@ -220,7 +222,7 @@ export function ArticleDetail() {
       const authorName = (article as any).authorName || reporter?.name || 'Damoh Daily News'
       updateMetaTag('name', 'description', desc)
       updateMetaTag('property', 'og:type', 'article')
-      updateMetaTag('property', 'og:site_name', 'Damoh Daily News')
+      updateMetaTag('property', 'og:site_name', 'Damoh Daily News Network')
       updateMetaTag('property', 'og:title', article.title)
       updateMetaTag('property', 'og:description', desc)
       updateMetaTag('property', 'og:image', img)
@@ -262,14 +264,20 @@ export function ArticleDetail() {
         "headline": article.title,
         "description": desc,
         "articleBody": (article.content ? article.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : desc),
-        "image": [img],
+        "image": [img, ...(article.imageUrl ? [article.imageUrl] : [])],
         "datePublished": article.publishedAt || new Date().toISOString(),
         "dateModified": article.updatedAt || article.publishedAt || new Date().toISOString(),
         "author": { "@type": "Person", "name": authorName },
         "publisher": {
-          "@type": "Organization",
-          "name": "Damoh Daily News",
-          "url": window.location.origin
+          "@type": "NewsMediaOrganization",
+          "name": "Damoh Daily News Network",
+          "url": canonicalOrigin,
+          "logo": {
+            "@type": "ImageObject",
+            "url": `${canonicalOrigin}/logo.png`,
+            "width": 1024,
+            "height": 512
+          }
         }
       }
       jsonLdEl.textContent = JSON.stringify(jsonLdData)
