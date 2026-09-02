@@ -2,7 +2,134 @@ import express from "express";
 import path from "path";
 import crypto from "crypto";
 import fs from "fs";
-import { submitToIndexNow, INDEXNOW_KEY, INDEXNOW_HOST, INDEXNOW_KEY_LOCATION } from "./indexnow";
+
+// ============================================================================
+// INDEXNOW CONSTANTS & HELPERS (Self-Contained for Vercel Serverless Function)
+// ============================================================================
+const INDEXNOW_KEY = "2710f5ce0d40420ca1296b880592e549";
+const INDEXNOW_HOST = "www.damohdailynewsnetwork.in";
+const INDEXNOW_KEY_LOCATION = `https://${INDEXNOW_HOST}/${INDEXNOW_KEY}.txt`;
+
+interface IndexNowSubmitResult {
+  success: boolean;
+  urls: string[];
+  statusCode?: number;
+  response?: string;
+  endpoints?: { endpoint: string; status: number; message?: string }[];
+  error?: string;
+}
+
+function normalizeIndexNowUrl(urlOrSlug: string, defaultHost = INDEXNOW_HOST): string {
+  if (!urlOrSlug) return `https://${defaultHost}/`;
+  const clean = urlOrSlug.trim();
+  if (clean.startsWith("http://") || clean.startsWith("https://")) {
+    if (clean.includes("localhost") || clean.includes("127.0.0.1") || clean.includes("run.app") || clean.includes("vercel.app")) {
+      try {
+        const parsed = new URL(clean);
+        return `https://${defaultHost}${parsed.pathname}${parsed.search}`;
+      } catch {
+        return `https://${defaultHost}/`;
+      }
+    }
+    return clean;
+  }
+  if (clean.startsWith("/")) {
+    return `https://${defaultHost}${clean}`;
+  }
+  if (clean.startsWith("article/")) {
+    return `https://${defaultHost}/${clean}`;
+  }
+  return `https://${defaultHost}/article/${clean}`;
+}
+
+async function submitToIndexNow(
+  urls: string | string[],
+  customHost?: string
+): Promise<IndexNowSubmitResult> {
+  let host = customHost || INDEXNOW_HOST;
+  if (!host || host.includes("localhost") || host.includes("127.0.0.1") || host.includes("run.app") || host.includes("vercel.app")) {
+    host = INDEXNOW_HOST;
+  }
+
+  const rawList = Array.isArray(urls) ? urls : [urls];
+  const urlList = Array.from(
+    new Set(
+      rawList
+        .filter(Boolean)
+        .map(u => normalizeIndexNowUrl(u, host))
+    )
+  );
+
+  if (urlList.length === 0) {
+    return {
+      success: true,
+      urls: [],
+      error: "No valid URLs provided for IndexNow submission"
+    };
+  }
+
+  const payload: Record<string, any> = {
+    host,
+    key: INDEXNOW_KEY,
+    keyLocation: `https://${host}/${INDEXNOW_KEY}.txt`,
+    urlList
+  };
+
+  const endpoints = [
+    "https://api.indexnow.org/indexnow",
+    "https://www.bing.com/indexnow"
+  ];
+
+  const results: { endpoint: string; status: number; message?: string }[] = [];
+  let atLeastOneSuccess = false;
+
+  for (const endpoint of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      const status = res.status;
+      let text = "";
+      try {
+        text = await res.text();
+      } catch {}
+
+      if (status === 200 || status === 202) {
+        atLeastOneSuccess = true;
+      }
+
+      results.push({
+        endpoint,
+        status,
+        message: text || (status === 200 || status === 202 ? "Accepted" : `HTTP ${status}`)
+      });
+    } catch (err: any) {
+      console.warn(`[IndexNow] Error submitting to ${endpoint}:`, err?.message || err);
+      results.push({
+        endpoint,
+        status: 0,
+        message: err?.message || "Network request failed"
+      });
+    }
+  }
+
+  return {
+    success: atLeastOneSuccess,
+    urls: urlList,
+    endpoints: results
+  };
+}
 
 // ============================================================================
 // CONSTANTS & CATEGORIES
