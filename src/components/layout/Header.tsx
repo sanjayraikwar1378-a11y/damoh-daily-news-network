@@ -271,9 +271,9 @@ export function Header() {
       )}
 
       {/* Top Ticker Bar */}
-      <div className="bg-zinc-900 text-zinc-200 text-xs py-1 border-b border-zinc-800">
-        <div className="container mx-auto px-3 sm:px-4 flex justify-between items-center max-w-7xl">
-          <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto whitespace-nowrap scrollbar-none py-0.5 max-w-full">
+      <div className="bg-zinc-900 text-zinc-200 text-xs py-1 border-b border-zinc-800 w-full overflow-hidden">
+        <div className="container mx-auto px-3 sm:px-4 flex justify-between items-center max-w-7xl w-full">
+          <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto whitespace-nowrap scrollbar-none py-0.5 min-w-0 flex-1">
             {weather ? (
               <span className="flex items-center gap-1 font-bold text-amber-400 text-[11px] sm:text-xs shrink-0">
                 <MapPin className="h-3 w-3 flex-shrink-0 text-red-500" /> Damoh, MP ({weather.temp}°C {weather.conditionHi})
@@ -326,7 +326,7 @@ export function Header() {
       </div>
       
       {/* Main Header Bar: [ Logo ] [ Category Navigation in same row ] [ Icons ] */}
-      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-14 sm:h-16 md:h-16 lg:h-[70px] flex items-center justify-between relative gap-1.5 sm:gap-2.5 lg:gap-3">
+      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-14 sm:h-16 md:h-16 lg:h-[70px] flex items-center justify-between relative gap-1.5 sm:gap-2.5 lg:gap-3 w-full">
         {/* Left Section: Mobile Hamburger (< md) + Brand Logo */}
         <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0">
           {/* Hamburger Menu Toggle button for mobile (< md) */}
@@ -350,7 +350,7 @@ export function Header() {
               width={360}
               height={70}
               priority={true}
-              className="h-[58px] xs:h-[63px] sm:h-[73px] md:h-[78px] lg:h-[88px] xl:h-[94px] w-auto max-w-[calc(100vw-140px)] xs:max-w-[340px] sm:max-w-[416px] md:max-w-[470px] lg:max-w-[520px] xl:max-w-[570px] object-contain object-left" 
+              className="h-[58px] xs:h-[63px] sm:h-[73px] md:h-[78px] lg:h-[88px] xl:h-[94px] w-auto max-w-[calc(100vw-150px)] sm:max-w-[416px] md:max-w-[470px] lg:max-w-[520px] xl:max-w-[570px] object-contain object-left" 
             />
           </Link>
         </div>
@@ -494,7 +494,7 @@ export function Header() {
       <nav 
         id="category-navigation-mobile"
         aria-label="मोबाइल श्रेणी नेविगेशन (Mobile Category Navigation)" 
-        className="md:hidden w-full bg-white dark:bg-zinc-950 border-b border-border/80 shadow-xs relative z-30"
+        className="md:hidden w-full max-w-full bg-white dark:bg-zinc-950 border-b border-border/80 shadow-xs relative z-30 overflow-hidden"
       >
         <div 
           ref={mobileScrollRef}

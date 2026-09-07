@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import crypto from "crypto";
-import { verifyAdminAuth } from "./auth";
+import { verifyAdminAuth } from "./auth.js";
 
 interface ExtendedRequest extends IncomingMessage {
   body?: any;

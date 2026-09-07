@@ -26,7 +26,7 @@ export function BreakingNewsTicker() {
           </div>
 
           {/* Marquee Content */}
-          <div className="px-3 sm:px-4 py-2 sm:py-2.5 overflow-hidden relative w-full flex items-center">
+          <div className="px-3 sm:px-4 py-2 sm:py-2.5 overflow-hidden relative w-full flex-1 min-w-0 flex items-center">
             <div
               className="animate-marquee whitespace-nowrap text-xs sm:text-sm font-semibold flex items-center shrink-0 hover:[animation-play-state:paused] focus-within:[animation-play-state:paused]"
               style={{ animationDuration: `${marqueeDuration}s` }}

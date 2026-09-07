@@ -1,14 +1,11 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant xs (@media (min-width: 400px));
 
 @theme {
   --font-sans: "Noto Sans Devanagari", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --animate-marquee: marquee 25s linear infinite;
-
-  /* Small-phone breakpoint. Used throughout Header/Ticker/Nav for tighter
-     control over the 360-400px width range common on budget Android phones. */
-  --breakpoint-xs: 400px;
 
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -99,11 +96,22 @@
   * {
     @apply border-border;
   }
+  html {
+    width: 100%;
+    max-width: 100%;
+  }
   body {
+    width: 100%;
+    max-width: 100%;
     @apply bg-background text-foreground font-sans;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+  #root {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100vh;
   }
 
   /* Consistent, visible keyboard focus ring across the site (native

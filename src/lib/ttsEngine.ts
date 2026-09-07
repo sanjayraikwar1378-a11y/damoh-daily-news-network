@@ -231,11 +231,32 @@ class TTSEngine {
   }
 
   /**
-   * Splits full text into natural Hindi speech chunks (80 - 180 chars).
+   * Splits full text into natural Hindi speech chunks (100 - 160 chars).
    * Ensures mobile browsers (Chrome Android) never drop or truncate long texts.
    */
-  public splitIntoChunks(fullText: string, maxLen = 170): string[] {
+  public splitIntoChunks(fullText: string, maxLen = 160): string[] {
     if (!fullText) return [];
+
+    // Helper to safely split any long string by whitespace word boundaries
+    const splitByWords = (str: string, limit: number): string[] => {
+      const words = str.split(/\s+/).filter(Boolean);
+      const results: string[] = [];
+      let current = "";
+      for (const w of words) {
+        if (!current) {
+          current = w;
+        } else if ((current + " " + w).length <= limit) {
+          current += " " + w;
+        } else {
+          results.push(current);
+          current = w;
+        }
+      }
+      if (current) {
+        results.push(current);
+      }
+      return results;
+    };
 
     // Split on Hindi purna viram (।), period, exclamation, question mark, or newline
     const rawSentences = fullText
@@ -249,25 +270,20 @@ class TTSEngine {
       if (sentence.length <= maxLen) {
         chunks.push(sentence);
       } else {
-        // Break long compound sentences by commas or semicolons
+        // Break long compound sentences by commas, semicolons, colons or dashes
         const clauses = sentence
           .split(/[,;:–—]+/)
           .map((c) => c.trim())
           .filter((c) => c.length > 0);
 
-        let current = "";
         for (const clause of clauses) {
-          if (!current) {
-            current = clause;
-          } else if ((current + " " + clause).length <= maxLen) {
-            current += ", " + clause;
+          if (clause.length <= maxLen) {
+            chunks.push(clause);
           } else {
-            chunks.push(current);
-            current = clause;
+            // If an individual clause still exceeds maxLen, break strictly on word boundaries
+            const wordChunks = splitByWords(clause, maxLen);
+            chunks.push(...wordChunks);
           }
-        }
-        if (current) {
-          chunks.push(current);
         }
       }
     }
@@ -466,13 +482,35 @@ class TTSEngine {
       this.activeUtterance = utterance;
       if (typeof window !== "undefined") {
         (window as any).__TTS_ACTIVE_UTTERANCE__ = utterance;
+        if (!(window as any).__TTS_UTTERANCE_POOL__) {
+          (window as any).__TTS_UTTERANCE_POOL__ = [];
+        }
+        (window as any).__TTS_UTTERANCE_POOL__.push(utterance);
+        if ((window as any).__TTS_UTTERANCE_POOL__.length > 10) {
+          (window as any).__TTS_UTTERANCE_POOL__.shift();
+        }
       }
 
       utterance.onend = () => {
         if (!this.isPlaying || this.isPaused) return;
-        // Advance to next chunk
-        this.speakChunk(index + 1);
-        this.notify();
+
+        // Clean up reference to this utterance
+        this.activeUtterance = null;
+
+        // Advance to next chunk if available
+        if (index + 1 < this.chunks.length) {
+          this.currentChunkIndex = index + 1;
+          this.notify();
+          // Asynchronously trigger next chunk to allow Android Chrome audio pipeline to cleanly transition
+          setTimeout(() => {
+            if (this.isPlaying && !this.isPaused) {
+              this.speakChunk(index + 1);
+            }
+          }, 40);
+        } else {
+          // Finished reading the entire article!
+          this.stop();
+        }
       };
 
       utterance.onerror = (event: SpeechSynthesisErrorEvent) => {
@@ -484,12 +522,15 @@ class TTSEngine {
 
         // Attempt recovery: move to next chunk instead of crashing the whole player
         if (this.isPlaying && !this.isPaused && index + 1 < this.chunks.length) {
+          this.currentChunkIndex = index + 1;
+          this.notify();
           setTimeout(() => {
-            this.speakChunk(index + 1);
-            this.notify();
-          }, 100);
+            if (this.isPlaying && !this.isPaused) {
+              this.speakChunk(index + 1);
+            }
+          }, 60);
         } else {
-          this.lastError = "आवाज़ चलाने में त्रुटि हुई। कृपया पुनः प्रयास करें।";
+          this.lastError = "आवाज़ चलाने में त्रुटि हुई।";
           this.stop();
         }
       };
@@ -507,20 +548,19 @@ class TTSEngine {
   }
 
   /**
-   * Chrome 15-second pause bug workaround: periodic pause/resume ping
+   * Watchdog timer to ensure speech engine does not freeze or stay stuck paused
    */
   private startKeepAlive() {
     this.stopKeepAlive();
     this.keepAliveTimer = setInterval(() => {
       if (this.isSupported() && this.isPlaying && !this.isPaused) {
         try {
-          if (window.speechSynthesis.speaking) {
-            window.speechSynthesis.pause();
+          if (window.speechSynthesis.paused) {
             window.speechSynthesis.resume();
           }
         } catch {}
       }
-    }, 10000);
+    }, 5000);
   }
 
   private stopKeepAlive() {

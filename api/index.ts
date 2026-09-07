@@ -2,8 +2,8 @@ import express from "express";
 import path from "path";
 import crypto from "crypto";
 import fs from "fs";
-import { performLiveUpdatesCleanup as executeCanonicalLiveUpdatesCleanup } from "./liveUpdatesCleanup";
-import { requireAdmin } from "./auth";
+import { performLiveUpdatesCleanup as executeCanonicalLiveUpdatesCleanup } from "./liveUpdatesCleanup.js";
+import { requireAdmin } from "./auth.js";
 
 // ============================================================================
 // INDEXNOW CONSTANTS & HELPERS (Self-Contained for Vercel Serverless Function)
@@ -863,7 +863,23 @@ async function createResizedImageBuffer(inputBuffer: Buffer, _targetMime: 'image
 
 function getArticleImageUrl(article: Record<string, any> | null, slug: string, baseUrl: string): string {
   if (!article) {
-    return `${baseUrl}/social-preview.jpg`;
+    return `${baseUrl}/logo.png`;
+  }
+
+  // Use the REAL article image whenever available for lightning-fast, zero-timeout WhatsApp & social previews
+  const rawImg = (article.imageUrl || article.image || article.featuredImage || article.thumbnailUrl || "").trim();
+  if (rawImg && !rawImg.startsWith("data:")) {
+    if (rawImg.startsWith("http://") || rawImg.startsWith("https://")) {
+      // If Cloudinary URL, ensure it is optimized for Open Graph 1200x630 JPEG
+      if (rawImg.includes("res.cloudinary.com") && rawImg.includes("/upload/")) {
+        return rawImg.replace(/\/upload\/(?:[^\/]+\/)?/, "/upload/c_fill,w_1200,h_630,q_auto,f_jpg/");
+      }
+      return rawImg;
+    }
+    if (rawImg.startsWith("/")) {
+      return `${baseUrl}${rawImg}`;
+    }
+    return `${baseUrl}/${rawImg}`;
   }
 
   const rawSlug = article.slug || slug || article.id || "article";
