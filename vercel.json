@@ -82,6 +82,18 @@
       "destination": "/api"
     },
     {
+      "source": "/category/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/",
+      "destination": "/api"
+    },
+    {
+      "source": "/index.html",
+      "destination": "/api"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

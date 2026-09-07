@@ -7,6 +7,7 @@ import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
 import { INITIAL_MARKET_RATES } from "@/data/mock"
 import { uploadToCloudinary } from "@/lib/cloudinary"
+import { auth } from "@/lib/firebase"
 
 export function AdminSettings() {
   const { siteSettings, updateSiteSettings, marketRates, updateMarketRates } = useNews()
@@ -29,7 +30,14 @@ export function AdminSettings() {
   const loadFcmStatus = async () => {
     setIsLoadingFcmStatus(true)
     try {
-      const res = await fetch("/api/fcm/status")
+      const headers: Record<string, string> = {}
+      if (auth.currentUser) {
+        try {
+          const token = await auth.currentUser.getIdToken()
+          if (token) headers["Authorization"] = `Bearer ${token}`
+        } catch {}
+      }
+      const res = await fetch("/api/fcm/status", { headers })
       if (res.ok) {
         const data = await res.json()
         setFcmStatus(data)
@@ -50,9 +58,16 @@ export function AdminSettings() {
     setIsSendingTestPush(true)
     setTestPushResult(null)
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (auth.currentUser) {
+        try {
+          const token = await auth.currentUser.getIdToken()
+          if (token) headers["Authorization"] = `Bearer ${token}`
+        } catch {}
+      }
       const res = await fetch("/api/send-push", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           title: testPushForm.title,
           body: testPushForm.body,

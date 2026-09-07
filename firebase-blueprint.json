@@ -133,6 +133,14 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["token"]
+    },
+    "test": {
+      "title": "Connection Test",
+      "description": "Firestore connection validation endpoint",
+      "type": "object",
+      "properties": {
+        "connected": { "type": "boolean" }
+      }
     }
   },
   "firestore": {
@@ -145,6 +153,7 @@
     "/messages/{messageId}": { "schema": "messages", "description": "Contact messages and news tips" },
     "/live_updates/{updateId}": { "schema": "live_updates", "description": "Live breaking quick updates collection" },
     "/notifications/{notificationId}": { "schema": "notifications", "description": "Broadcast news notification messages" },
-    "/fcm_tokens/{tokenId}": { "schema": "fcm_tokens", "description": "Browser push subscription tokens" }
+    "/fcm_tokens/{tokenId}": { "schema": "fcm_tokens", "description": "Browser push subscription tokens" },
+    "/test/{testId}": { "schema": "test", "description": "Firestore connection validation endpoint" }
   }
 }

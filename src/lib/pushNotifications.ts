@@ -1,4 +1,4 @@
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export interface ArticlePushData {
@@ -93,9 +93,19 @@ export async function dispatchArticlePushNotification(article: ArticlePushData):
       imageUrl
     };
 
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (auth.currentUser) {
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+      } catch (e) {
+        console.warn("[Push] Could not obtain admin auth token:", e);
+      }
+    }
+
     const res = await fetch("/api/send-push", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload)
     });
 

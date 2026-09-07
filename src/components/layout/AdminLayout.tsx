@@ -40,7 +40,7 @@ export function AdminLayout() {
   const [user, setUser] = useState<User | null | undefined>(undefined) // undefined = loading
   const [authError, setAuthError] = useState<string | null>(null)
 
-  const logoSrc = siteSettings?.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.png"
+  const logoSrc = siteSettings?.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.svg"
   const siteName = siteSettings?.siteName || "Damoh Daily News Network"
   
   useEffect(() => {

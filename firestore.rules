@@ -44,7 +44,15 @@ service cloud.firestore {
 
     match /comments/{document} {
       allow read: if true;
-      allow create: if true;
+      allow create: if request.resource.data.keys().hasAll(['articleId', 'userName', 'content']) &&
+                       request.resource.data.articleId is string &&
+                       request.resource.data.userName is string &&
+                       request.resource.data.userName.size() > 0 &&
+                       request.resource.data.userName.size() <= 100 &&
+                       request.resource.data.content is string &&
+                       request.resource.data.content.size() > 0 &&
+                       request.resource.data.content.size() <= 2000 &&
+                       (request.resource.data.status == 'pending' || isAdmin());
       allow update, delete: if isAdmin();
     }
 
@@ -54,8 +62,10 @@ service cloud.firestore {
     }
 
     match /messages/{document} {
-      allow read: if true;
-      allow create: if true;
+      allow read: if isAdmin();
+      allow create: if request.resource.data.name is string &&
+                       request.resource.data.name.size() > 0 &&
+                       request.resource.data.name.size() <= 100;
       allow update, delete: if isAdmin();
     }
 
@@ -70,7 +80,19 @@ service cloud.firestore {
     }
 
     match /fcm_tokens/{document} {
-      allow read, write: if true;
+      allow read: if isAdmin();
+      allow create, update: if request.resource.data.token is string &&
+                               request.resource.data.token.size() >= 10 &&
+                               request.resource.data.token.size() <= 500 &&
+                               (request.resource.data.platform in ['web', 'android', 'ios', 'unknown']) &&
+                               (request.resource.data.active is bool);
+      allow delete: if isAdmin();
+    }
+
+    // Connection health check
+    match /test/{testId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Analytics & Events: Public users can record background view/like events, but ONLY authenticated admins can read/list/manage analytics data

@@ -44,25 +44,25 @@ export function Home() {
   const heroArticle = useMemo(() => breakingNews.length > 0 ? breakingNews[0] : publishedArticles[0], [breakingNews, publishedArticles])
   const topTrending = useMemo(() => trendingNews.length > 0 ? trendingNews : publishedArticles.slice(1, 5), [trendingNews, publishedArticles])
 
-  const damohCategory = useMemo(() => categories.find(c => c.slug === 'damoh'), [categories])
-  const damohArticles = useMemo(() => publishedArticles.filter(a => damohCategory && a.categoryIds?.includes(damohCategory.id)), [publishedArticles, damohCategory])
+  const damohCategory = useMemo(() => categories.find(c => c.slug === 'damoh' || c.id === 'c1') || categories[0], [categories])
+  const damohArticles = useMemo(() => publishedArticles.filter(a => damohCategory && (a.categoryIds?.includes(damohCategory.id) || a.categoryIds?.includes('damoh') || a.categoryIds?.includes('c1'))), [publishedArticles, damohCategory])
 
-  const politicsCategory = useMemo(() => categories.find(c => c.slug === 'politics'), [categories])
-  const politicsArticles = useMemo(() => publishedArticles.filter(a => politicsCategory && a.categoryIds?.includes(politicsCategory.id)), [publishedArticles, politicsCategory])
+  const politicsCategory = useMemo(() => categories.find(c => c.slug === 'politics' || c.id === 'c6'), [categories])
+  const politicsArticles = useMemo(() => publishedArticles.filter(a => politicsCategory && (a.categoryIds?.includes(politicsCategory.id) || a.categoryIds?.includes('politics') || a.categoryIds?.includes('c6'))), [publishedArticles, politicsCategory])
 
-  const crimeCategory = useMemo(() => categories.find(c => c.slug === 'crime'), [categories])
-  const crimeArticles = useMemo(() => publishedArticles.filter(a => crimeCategory && a.categoryIds?.includes(crimeCategory.id)), [publishedArticles, crimeCategory])
+  const crimeCategory = useMemo(() => categories.find(c => c.slug === 'crime' || c.id === 'c7'), [categories])
+  const crimeArticles = useMemo(() => publishedArticles.filter(a => crimeCategory && (a.categoryIds?.includes(crimeCategory.id) || a.categoryIds?.includes('crime') || a.categoryIds?.includes('c7'))), [publishedArticles, crimeCategory])
 
-  const videoCategory = useMemo(() => categories.find(c => c.slug === 'video' || c.slug === 'videos'), [categories])
-  const photoCategory = useMemo(() => categories.find(c => c.slug === 'photo' || c.slug === 'photos' || c.slug === 'gallery'), [categories])
+  const videoCategory = useMemo(() => categories.find(c => c.slug === 'video' || c.slug === 'videos' || c.id === 'c18'), [categories])
+  const photoCategory = useMemo(() => categories.find(c => c.slug === 'photo' || c.slug === 'photos' || c.slug === 'photo-gallery' || c.slug === 'gallery' || c.id === 'c19'), [categories])
 
   // Other categories with published articles
   const otherCategorySections = useMemo(() => {
     return categories
-      .filter(c => !['damoh', 'politics', 'crime', 'video', 'videos', 'photo', 'photos', 'gallery'].includes((c.slug || '').toLowerCase()))
+      .filter(c => !['damoh', 'politics', 'crime', 'video', 'videos', 'photo', 'photos', 'photo-gallery', 'gallery'].includes((c.slug || '').toLowerCase()))
       .map(cat => ({
         category: cat,
-        articles: publishedArticles.filter(a => a.categoryIds?.includes(cat.id))
+        articles: publishedArticles.filter(a => a.categoryIds?.includes(cat.id) || a.categoryIds?.includes(cat.slug))
       }))
       .filter(item => item.articles.length > 0)
   }, [categories, publishedArticles])

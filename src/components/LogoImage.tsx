@@ -23,10 +23,14 @@ export const LogoImage: React.FC<LogoImageProps> = ({
   decoding,
   ...props
 }) => {
-  // Determine clean initial source
+  // Determine clean initial source - prefer crisp SVG vector for infinite sharpness
   const getCleanSrc = (rawSrc?: string): string => {
-    if (!rawSrc || !rawSrc.trim()) return '/logo.png';
+    if (!rawSrc || !rawSrc.trim()) return '/logo.svg';
     const trimmed = rawSrc.trim();
+    // Prefer crisp vector SVG over raster assets to avoid scaling blur
+    if (trimmed === '/logo.png' || trimmed === '/logo.webp' || trimmed === 'logo.png' || trimmed === 'logo.webp') {
+      return '/logo.svg';
+    }
     if (trimmed.includes('res.cloudinary.com')) {
       return getOptimizedImageUrl(trimmed, { width: 800 });
     }
@@ -35,7 +39,7 @@ export const LogoImage: React.FC<LogoImageProps> = ({
 
   const initialSrc = getCleanSrc(src);
   const [currentSrc, setCurrentSrc] = useState<string>(initialSrc);
-  const [fallbackStage, setFallbackStage] = useState<number>(0); // 0 = original, 1 = /logo.png, 2 = /logo.svg
+  const [fallbackStage, setFallbackStage] = useState<number>(0); // 0 = /logo.svg (vector), 1 = /logo.webp (3887px), 2 = /logo.png (3887px)
 
   // Synchronize when prop changes
   useEffect(() => {
@@ -45,12 +49,12 @@ export const LogoImage: React.FC<LogoImageProps> = ({
   }, [src]);
 
   const handleError = () => {
-    if (fallbackStage === 0 && currentSrc !== '/logo.png') {
+    if (fallbackStage === 0 && currentSrc !== '/logo.webp') {
       setFallbackStage(1);
-      setCurrentSrc('/logo.png');
-    } else if (fallbackStage < 2 && currentSrc !== '/logo.svg') {
+      setCurrentSrc('/logo.webp');
+    } else if (fallbackStage <= 1 && currentSrc !== '/logo.png') {
       setFallbackStage(2);
-      setCurrentSrc('/logo.svg');
+      setCurrentSrc('/logo.png');
     }
   };
 
@@ -67,6 +71,10 @@ export const LogoImage: React.FC<LogoImageProps> = ({
       onError={handleError}
       style={{
         color: 'transparent', // Suppresses raw browser alt-text glitch during sub-millisecond load
+        objectFit: 'contain',
+        objectPosition: 'left center',
+        imageRendering: 'auto',
+        aspectRatio: '1166 / 250',
         ...style
       }}
       className={`select-none ${className}`}

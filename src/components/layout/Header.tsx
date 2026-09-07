@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { Search, Menu, Sun, Moon, MapPin, ChevronDown, Bookmark, X, Home as HomeIcon, Shield, Sparkles, ExternalLink, Flame, Newspaper, PhoneCall, Clock, Mail, MessageSquare, Phone, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useNews } from "@/context/NewsContext"
 import { useWeather } from "@/context/WeatherContext"
 import { SearchBar } from "@/components/SearchBar"
@@ -9,6 +9,7 @@ import { BreakingNewsTicker } from "@/components/BreakingNewsTicker"
 import { NotificationCenter } from "@/components/NotificationCenter"
 import { LogoImage } from "@/components/LogoImage"
 import { motion, AnimatePresence } from "motion/react"
+import { getHeaderNavigationItems, HeaderNavItem } from "@/config/categories"
 
 export function Header() {
   const location = useLocation()
@@ -88,8 +89,163 @@ export function Header() {
     }
   }
   
-  const visibleCategories = useMemo(() => categories.slice(0, 6), [categories])
-  const moreCategories = useMemo(() => categories.slice(6), [categories])
+  // Unified navigation items according to priority order:
+  // 1. Home, 2. Latest News, 3. Damoh, 4. Crime, 5. MP, 6. India, 7. Politics, 8. Religion, followed by remaining categories
+  const navItems = useMemo(() => getHeaderNavigationItems(categories), [categories])
+
+  // Ref to measure available middle horizontal space dynamically in the main header row
+  const navContainerRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState<number>(0)
+
+  useEffect(() => {
+    if (!navContainerRef.current) return
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width
+        if (w > 0) {
+          setContainerWidth(Math.floor(w))
+        }
+      }
+    })
+    ro.observe(navContainerRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  // The header desktop row displays up to the 8 primary priority items:
+  // 1. Home, 2. Latest News, 3. Damoh, 4. Crime, 5. MP, 6. India, 7. Politics, 8. Religion.
+  // All remaining categories naturally flow into the "और देखें (More)" dropdown menu.
+  const MAX_PRIMARY_ITEMS = 8
+
+  // Calculate how many priority categories fit naturally in the available horizontal space
+  const visibleCount = useMemo(() => {
+    const ESTIMATED_ITEM_WIDTHS: Record<string, number> = {
+      '': 70,
+      'home': 70,
+      'latest-news': 110,
+      'latest-news-page': 110,
+      'damoh': 65,
+      'crime': 65,
+      'madhya-pradesh': 110,
+      'india': 65,
+      'politics': 78,
+      'religion': 65,
+      'taaza-khabarein': 85,
+      'breaking-news': 110,
+      'business': 75,
+      'agriculture': 65,
+      'education': 70,
+      'jobs': 80,
+      'sports': 60,
+      'entertainment': 90,
+      'technology': 80,
+      'health': 80,
+      'weather': 65,
+      'videos': 65,
+      'photo-gallery': 95,
+      'fact-check': 85,
+      'international': 95,
+    }
+    const MORE_BTN_WIDTH = 115
+    const ITEM_GAP = 6
+
+    if (containerWidth > 0) {
+      let available = containerWidth - MORE_BTN_WIDTH - ITEM_GAP
+      let count = 0
+      const limit = Math.min(MAX_PRIMARY_ITEMS, navItems.length)
+      for (let i = 0; i < limit; i++) {
+        const w = (ESTIMATED_ITEM_WIDTHS[navItems[i].slug] || 75) + ITEM_GAP
+        if (available >= w) {
+          available -= w
+          count++
+        } else {
+          break
+        }
+      }
+      return Math.max(1, Math.min(MAX_PRIMARY_ITEMS, count))
+    }
+
+    if (typeof window !== 'undefined') {
+      const w = window.innerWidth
+      if (w >= 1440) return 8
+      if (w >= 1366) return 7
+      if (w >= 1280) return 6
+      if (w >= 1024) return 5
+      if (w >= 768) return 4
+    }
+    return 4
+  }, [containerWidth, navItems])
+
+  const visibleNavItems = useMemo(() => navItems.slice(0, visibleCount), [navItems, visibleCount])
+  const moreNavItems = useMemo(() => navItems.slice(visibleCount), [navItems, visibleCount])
+
+  // Helper to accurately match active status for Home, Latest News, and Categories
+  const isItemActive = (item: HeaderNavItem): boolean => {
+    if (item.isHome) {
+      return location.pathname === '/' || location.pathname === ''
+    }
+    if (item.isLatestNews || item.path === '/latest-news') {
+      return location.pathname === '/latest-news' || location.pathname === '/category/latest-news'
+    }
+    const currentPath = location.pathname.toLowerCase()
+    const targetPath = item.path.toLowerCase()
+    if (currentPath === targetPath) return true
+
+    if (currentPath.startsWith('/category/')) {
+      const rawSlug = currentPath.replace('/category/', '').split('/')[0].split('?')[0]
+      let decodedSlug = rawSlug
+      try {
+        decodedSlug = decodeURIComponent(rawSlug).toLowerCase()
+      } catch {}
+
+      if (item.slug && item.slug.toLowerCase() === decodedSlug) return true
+      if (item.englishName && item.englishName.toLowerCase() === decodedSlug) return true
+      if (item.hindiName && item.hindiName.toLowerCase() === decodedSlug) return true
+      if (item.aliases && item.aliases.some(a => a.toLowerCase() === decodedSlug)) return true
+    }
+    return false
+  }
+
+  const isMoreActive = useMemo(() => {
+    return moreNavItems.some(item => isItemActive(item))
+  }, [moreNavItems, location.pathname])
+
+  // Refs for mobile scroll & desktop more dropdown
+  const mobileScrollRef = useRef<HTMLDivElement>(null)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+
+  // Smoothly scroll active category into view on mobile
+  useEffect(() => {
+    if (!mobileScrollRef.current) return
+    const activeEl = mobileScrollRef.current.querySelector('[data-active="true"]') as HTMLElement | null
+    if (activeEl) {
+      const container = mobileScrollRef.current
+      const scrollLeft = activeEl.offsetLeft - (container.clientWidth / 2) + (activeEl.clientWidth / 2)
+      container.scrollTo({ left: Math.max(0, scrollLeft), behavior: 'smooth' })
+    }
+  }, [location.pathname])
+
+  // Close "More" dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setShowMoreMenu(false)
+      }
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowMoreMenu(false)
+      }
+    }
+
+    if (showMoreMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      window.addEventListener('keydown', handleEscape)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+        window.removeEventListener('keydown', handleEscape)
+      }
+    }
+  }, [showMoreMenu])
 
   return (
     <>
@@ -169,14 +325,14 @@ export function Header() {
         </div>
       </div>
       
-      {/* Main Header Bar - Aligned to Left */}
-      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-14 sm:h-16 md:h-[68px] lg:h-[74px] flex items-center justify-between relative gap-2 sm:gap-4">
-        {/* Left Section: Mobile Hamburger + Brand Logo + Desktop Nav */}
-        <div className="flex items-center gap-2 sm:gap-3 lg:gap-5 min-w-0 flex-1 justify-start">
-          {/* Hamburger Menu Toggle button with touch target */}
+      {/* Main Header Bar: [ Logo ] [ Category Navigation in same row ] [ Icons ] */}
+      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-14 sm:h-16 md:h-16 lg:h-[70px] flex items-center justify-between relative gap-1.5 sm:gap-2.5 lg:gap-3">
+        {/* Left Section: Mobile Hamburger (< md) + Brand Logo */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0">
+          {/* Hamburger Menu Toggle button for mobile (< md) */}
           <button 
             type="button"
-            className="lg:hidden min-h-[38px] min-w-[38px] h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0 relative z-20" 
+            className="md:hidden min-h-[38px] min-w-[38px] h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0 relative z-20" 
             onClick={(e) => {
               e.stopPropagation()
               setMobileMenuOpen(true)
@@ -186,102 +342,197 @@ export function Header() {
             <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
           </button>
 
-          {/* Full Responsive Brand Logo - Clean Left-Aligned, Proportionally Larger, Preserved Natural Aspect Ratio */}
-          <Link to="/" className="flex items-center group min-w-0 shrink py-0.5 relative z-10 max-w-[calc(100vw-140px)] sm:max-w-none">
+          {/* Full Responsive Brand Logo - restored to exact previous values from old project */}
+          <Link to="/" className="flex items-center group shrink min-w-0 py-0 relative z-10 hover:opacity-95 transition-opacity" aria-label="Damoh Daily News Network Home">
             <LogoImage 
               src={siteSettings.logoUrl} 
               alt={siteSettings.siteName || "Damoh Daily News Network"} 
               width={360}
               height={70}
               priority={true}
-              style={{ aspectRatio: '360 / 70' }}
-              className="h-[58px] xs:h-[63px] sm:h-[73px] md:h-[78px] lg:h-[88px] xl:h-[94px] w-auto max-w-[calc(100vw-140px)] xs:max-w-[340px] sm:max-w-[416px] md:max-w-[470px] lg:max-w-[520px] xl:max-w-[570px] object-contain object-left transition-transform group-hover:scale-[1.02] drop-shadow-sm" 
+              className="h-[58px] xs:h-[63px] sm:h-[73px] md:h-[78px] lg:h-[88px] xl:h-[94px] w-auto max-w-[calc(100vw-140px)] xs:max-w-[340px] sm:max-w-[416px] md:max-w-[470px] lg:max-w-[520px] xl:max-w-[570px] object-contain object-left" 
             />
           </Link>
+        </div>
 
-          {/* Desktop Category Nav - Flowing directly after Logo */}
-          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1.5 relative shrink-0 ml-1 xl:ml-3">
-            <Link
-              to="/latest-news"
-              className={`px-2.5 xl:px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-wider transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                location.pathname === "/latest-news" 
-                  ? "text-white bg-red-600 shadow-sm" 
-                  : "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white"
-              }`}
-            >
-              <Flame className="h-3.5 w-3.5 fill-current" />
-              <span>लेटेस्ट न्यूज़</span>
-            </Link>
+        {/* Middle Section: Desktop Category Navigation In The SAME Main Header Row (>= md) */}
+        <div 
+          ref={navContainerRef}
+          className="hidden md:flex items-center flex-1 min-w-0 mx-1 lg:mx-2 xl:mx-3 overflow-visible"
+        >
+          <nav 
+            id="desktop-category-navigation"
+            aria-label="श्रेणी नेविगेशन (Category Navigation)"
+            className="flex items-center gap-1 lg:gap-1.5 flex-nowrap whitespace-nowrap overflow-visible w-full"
+          >
+            <div className="flex items-center gap-1 lg:gap-1.5 flex-nowrap whitespace-nowrap overflow-hidden shrink min-w-0">
+              {visibleNavItems.map(item => {
+                const active = isItemActive(item)
+                return (
+                  <Link
+                    key={item.id}
+                    to={item.path}
+                    data-active={active}
+                    id={`desktop-nav-${item.slug || 'home'}`}
+                    className={`px-2 lg:px-2.5 xl:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 select-none ${
+                      active
+                        ? "text-white bg-red-600 shadow-xs font-black"
+                        : "text-zinc-700 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                    }`}
+                  >
+                    {item.isHome && <HomeIcon className="h-3.5 w-3.5 shrink-0" />}
+                    {item.isLatestNews && <Flame className={`h-3.5 w-3.5 shrink-0 fill-current ${active ? 'text-white' : 'text-red-600 animate-pulse'}`} />}
+                    <span>{item.hindiName}</span>
+                    <span className="sr-only">({item.englishName})</span>
+                  </Link>
+                )
+              })}
+            </div>
 
-            {visibleCategories.map(category => (
-              <Link
-                key={category.id}
-                to={`/category/${category.slug}`}
-                className={`px-2 xl:px-2.5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 whitespace-nowrap ${
-                  location.pathname === `/category/${category.slug}` ? "text-red-600 bg-red-50 dark:bg-red-950/50" : "text-zinc-700 dark:text-zinc-300"
-                }`}
-              >
-                {category.name.split(' ')[0]}
-              </Link>
-            ))}
-
-            {moreCategories.length > 0 && (
+            {/* MORE Dropdown for remaining categories that do not fit in available space */}
+            {moreNavItems.length > 0 && (
               <div 
-                className="relative" 
+                ref={moreMenuRef}
+                className="relative shrink-0"
                 onMouseEnter={() => setShowMoreMenu(true)}
                 onMouseLeave={() => setShowMoreMenu(false)}
               >
-                <button className="px-2 xl:px-2.5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 flex items-center gap-1 text-zinc-700 dark:text-zinc-300">
-                  More <ChevronDown className="h-3.5 w-3.5" />
+                <button
+                  type="button"
+                  id="desktop-nav-more-btn"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setShowMoreMenu(prev => !prev)
+                  }}
+                  aria-expanded={showMoreMenu}
+                  aria-haspopup="true"
+                  className={`px-2 lg:px-2.5 xl:px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 whitespace-nowrap select-none cursor-pointer ${
+                    isMoreActive
+                      ? "bg-red-50 text-red-600 dark:bg-red-950/60 dark:text-red-400 border border-red-200 dark:border-red-900/50 font-bold"
+                      : "text-zinc-700 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                  }`}
+                >
+                  <span>और देखें (More)</span>
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showMoreMenu ? "rotate-180" : ""}`} />
+                  {isMoreActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
+                  )}
                 </button>
-                
-                {showMoreMenu && (
-                  <div className="absolute top-full right-0 w-52 py-2 bg-background border rounded-lg shadow-xl z-50 flex flex-col max-h-[60vh] overflow-y-auto">
-                    {moreCategories.map(category => (
-                      <Link
-                        key={category.id}
-                        to={`/category/${category.slug}`}
-                        onClick={() => setShowMoreMenu(false)}
-                        className="px-4 py-2 text-xs font-semibold hover:bg-red-50 hover:text-red-600 dark:hover:bg-zinc-800 transition-colors"
-                      >
-                        {category.name}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+
+                {/* Dropdown Menu */}
+                <AnimatePresence>
+                  {showMoreMenu && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 4 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute top-full right-0 mt-1.5 w-64 sm:w-72 py-2 bg-white dark:bg-zinc-950 border border-border rounded-xl shadow-2xl z-50 flex flex-col max-h-[70vh] overflow-y-auto scrollbar-thin"
+                    >
+                      <div className="px-3.5 py-1.5 text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider border-b border-border/80 mb-1 flex items-center justify-between">
+                        <span>अन्य श्रेणियां ({moreNavItems.length})</span>
+                        <span className="text-[10px] text-zinc-400 font-normal">More Categories</span>
+                      </div>
+                      {moreNavItems.map(item => {
+                        const active = isItemActive(item)
+                        return (
+                          <Link
+                            key={item.id}
+                            to={item.path}
+                            id={`desktop-more-nav-${item.slug}`}
+                            onClick={() => setShowMoreMenu(false)}
+                            className={`px-4 py-2.5 text-xs font-bold transition-colors flex items-center justify-between group ${
+                              active
+                                ? "bg-red-50 text-red-600 dark:bg-red-950/80 dark:text-red-400 font-black"
+                                : "text-zinc-700 dark:text-zinc-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-zinc-900"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {item.isLatestNews && <Flame className="h-3.5 w-3.5 text-red-500 fill-current" />}
+                              <span className="text-zinc-900 dark:text-zinc-100 group-hover:text-red-600 dark:group-hover:text-red-400">{item.hindiName}</span>
+                              <span className="text-zinc-400 dark:text-zinc-500 text-[11px] font-normal">({item.englishName})</span>
+                            </span>
+                            {active && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-600 shrink-0" />
+                            )}
+                          </Link>
+                        )
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
           </nav>
         </div>
         
-        {/* Right Tools: Notification Bell, Search & Theme Toggle */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto relative z-20">
+        {/* Right Tools: Notification Bell, Search & Theme Toggle (Always Visible & Functional) */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto relative z-20">
           <NotificationCenter />
           <SearchBar />
-          <Button 
+          <button 
             type="button"
-            variant="ghost" 
-            size="icon" 
+            id="header-theme-toggle"
             onClick={(e) => {
-              e.stopPropagation()
-              toggleDarkMode()
+              e.stopPropagation();
+              toggleDarkMode();
             }} 
-            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white h-9 w-9 sm:h-10 sm:w-10 shrink-0 relative z-20"
-            aria-label="Toggle Theme"
+            className="h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors shrink-0 relative z-20"
+            aria-label={isDark ? "लाइट थीम (Switch to Light Mode)" : "डार्क थीम (Switch to Dark Mode)"}
+            title={isDark ? "लाइट मोड (Light Mode)" : "डार्क मोड (Dark Mode)"}
           >
-            {isDark ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5" />}
-          </Button>
+            {isDark ? (
+              <Sun className="h-5 w-5 text-amber-400 fill-amber-400/20 transition-transform duration-200 hover:rotate-45" />
+            ) : (
+              <Moon className="h-5 w-5 text-zinc-700 dark:text-zinc-300 transition-transform duration-200 hover:-rotate-12" />
+            )}
+          </button>
         </div>
       </div>
+
+      {/* Mobile-Only Horizontally Scrollable Category Bar (< md) - Compact & Space-Efficient */}
+      <nav 
+        id="category-navigation-mobile"
+        aria-label="मोबाइल श्रेणी नेविगेशन (Mobile Category Navigation)" 
+        className="md:hidden w-full bg-white dark:bg-zinc-950 border-b border-border/80 shadow-xs relative z-30"
+      >
+        <div 
+          ref={mobileScrollRef}
+          className="flex items-center gap-1 overflow-x-auto scrollbar-none px-2 py-1 touch-pan-x select-none flex-nowrap whitespace-nowrap"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+        >
+          {navItems.map(item => {
+            const active = isItemActive(item)
+            return (
+              <Link
+                key={item.id}
+                to={item.path}
+                data-active={active}
+                id={`mobile-nav-${item.slug || 'home'}`}
+                className={`shrink-0 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[11px] font-bold transition-all flex items-center gap-1 whitespace-nowrap min-h-[26px] active:scale-95 leading-none ${
+                  active
+                    ? "bg-red-600 text-white shadow-xs font-black ring-1 ring-red-600/30"
+                    : "text-zinc-700 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 bg-zinc-100/90 dark:bg-zinc-900/90 hover:bg-zinc-200/80 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {item.isHome && <HomeIcon className="h-3 w-3 shrink-0" />}
+                {item.isLatestNews && <Flame className={`h-3 w-3 shrink-0 fill-current ${active ? 'text-white' : 'text-red-600 animate-pulse'}`} />}
+                <span>{item.hindiName}</span>
+                <span className="sr-only">({item.englishName})</span>
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
 
       {/* Breaking News Ticker - Stays sticky alongside Header */}
       <BreakingNewsTicker />
     </header>
 
-    {/* Motion Slide-out Mobile Navigation Drawer - Placed outside <header> to avoid backdrop-filter CSS containing block restrictions */}
+    {/* Motion Slide-out Mobile Navigation Drawer */}
     <AnimatePresence>
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[100] lg:hidden flex">
+        <div className="fixed inset-0 z-[100] md:hidden flex">
           {/* Backdrop */}
           <motion.div 
             initial={{ opacity: 0 }}
@@ -303,15 +554,15 @@ export function Header() {
             
             {/* Drawer Top Header */}
             <div className="p-3.5 border-b border-border bg-zinc-900 text-white flex items-center justify-between shrink-0">
-              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-w-0 py-0.5">
+              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-w-0 py-0.5" aria-label="Damoh Daily News Network Home">
                 <LogoImage 
                   src={siteSettings.logoUrl} 
                   alt={siteSettings.siteName || "Damoh Daily News Network"} 
-                  width={220}
-                  height={44}
+                  width={240}
+                  height={60}
                   priority={false}
-                  style={{ aspectRatio: '220 / 44' }}
-                  className="h-[52px] xs:h-[58px] w-auto max-w-[260px] xs:max-w-[285px] object-contain" 
+                  style={{ aspectRatio: '4 / 1' }}
+                  className="h-10 sm:h-12 w-auto max-w-[220px] object-contain" 
                 />
               </Link>
 
@@ -417,6 +668,22 @@ export function Header() {
                   <Shield className="h-4 w-4 text-red-400" />
                   <span>एडमिन कंट्रोल पैनल (CMS)</span>
                 </Link>
+
+                {/* Theme Toggle inside Drawer */}
+                <button
+                  type="button"
+                  onClick={toggleDarkMode}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-colors bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 min-h-[44px]"
+                  aria-label="Toggle Theme in Drawer"
+                >
+                  <span className="flex items-center gap-3">
+                    {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />}
+                    <span>थीम: {isDark ? "डार्क मोड (Dark Mode)" : "लाइट मोड (Light Mode)"}</span>
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-border shadow-2xs">
+                    {isDark ? "Light करें" : "Dark करें"}
+                  </span>
+                </button>
               </div>
 
               {/* News Categories Section */}
@@ -425,12 +692,14 @@ export function Header() {
                   समाचार श्रेणियां (Categories)
                 </p>
                 <div className="grid grid-cols-1 gap-1">
-                  {categories.map(category => {
-                    const isActive = location.pathname === `/category/${category.slug}`
+                  {navItems.filter(item => !item.isHome).map(item => {
+                    const isActive = isItemActive(item)
                     return (
                       <Link
-                        key={category.id}
-                        to={`/category/${category.slug}`}
+                        key={item.id}
+                        to={item.path}
+                        id={`drawer-nav-${item.slug}`}
+                        onClick={() => setMobileMenuOpen(false)}
                         className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-colors min-h-[44px] ${
                           isActive
                             ? "bg-red-50 text-red-600 dark:bg-red-950/80 dark:text-red-400 border-l-4 border-red-600"
@@ -438,12 +707,22 @@ export function Header() {
                         }`}
                       >
                         <span className="flex items-center gap-2">
-                          <Newspaper className="h-3.5 w-3.5 text-zinc-400" />
-                          {category.name}
+                          {item.isLatestNews ? (
+                            <Flame className="h-3.5 w-3.5 text-red-600 fill-current" />
+                          ) : (
+                            <Newspaper className={`h-3.5 w-3.5 ${isActive ? 'text-red-600 dark:text-red-400' : 'text-zinc-400'}`} />
+                          )}
+                          <span>{item.hindiName} ({item.englishName})</span>
                         </span>
-                        <span className="text-[10px] text-zinc-400 font-normal">
-                          श्रेणी
-                        </span>
+                        {item.priority && item.priority <= 8 ? (
+                          <span className="text-[10px] bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded font-bold">
+                            प्रमुख
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-zinc-400 font-normal">
+                            श्रेणी
+                          </span>
+                        )}
                       </Link>
                     )
                   })}

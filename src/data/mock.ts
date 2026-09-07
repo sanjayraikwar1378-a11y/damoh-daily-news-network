@@ -1,12 +1,19 @@
+import { CATEGORIES_CONFIG, CategoryConfig } from '@/config/categories';
+
 export type ArticleStatus = 'published' | 'draft' | 'scheduled' | 'archived' | 'trash';
 
 export interface Category {
   id: string;
   name: string;
   slug: string;
+  hindiName?: string;
+  englishName?: string;
   icon?: string;
   color?: string;
   subCategories?: string[];
+  description?: string;
+  aliases?: string[];
+  priority?: number;
 }
 
 export interface Reporter {
@@ -163,30 +170,22 @@ export interface Article {
   keywords?: string;
   canonicalUrl?: string;
   ogImage?: string;
+  category?: string;
+  categorySlug?: string;
 }
 
-export const CATEGORIES: Category[] = [
-  { id: 'c1', name: 'दमोह (Damoh)', slug: 'damoh', color: '#dc2626', subCategories: ['सिटी न्यूज', 'ग्रामीण', 'तहसील'] },
-  { id: 'c2', name: 'ब्रेकिंग न्यूज़ (Breaking News)', slug: 'breaking-news', color: '#ea580c', subCategories: ['ताजा अपडेट'] },
-  { id: 'c3', name: 'ताज़ा खबरें (Latest News)', slug: 'latest-news', color: '#16a34a', subCategories: ['लाइव', 'राष्ट्रीय'] },
-  { id: 'c4', name: 'मध्य प्रदेश (Madhya Pradesh)', slug: 'madhya-pradesh', color: '#2563eb', subCategories: ['भोपाल', 'जबलपुर', 'इंदौर', 'सागर'] },
-  { id: 'c5', name: 'भारत (India)', slug: 'india', color: '#4f46e5', subCategories: ['दिल्ली', 'राजनीति', 'विदेश'] },
-  { id: 'c6', name: 'राजनीति (Politics)', slug: 'politics', color: '#9333ea', subCategories: ['चुनाव', 'पार्टी', 'बयान'] },
-  { id: 'c7', name: 'अपराध (Crime)', slug: 'crime', color: '#b91c1c', subCategories: ['पुलिस', 'कोर्ट', 'हादसा'] },
-  { id: 'c8', name: 'व्यापार (Business)', slug: 'business', color: '#0d9488', subCategories: ['मंडी', 'सोना-चांदी', 'बाजार'] },
-  { id: 'c9', name: 'शिक्षा (Education)', slug: 'education', color: '#0284c7', subCategories: ['स्कूल', 'कॉलेज', 'रिजल्ट'] },
-  { id: 'c10', name: 'नौकरियां (Jobs)', slug: 'jobs', color: '#059669', subCategories: ['सरकारी भर्ती', 'निजी'] },
-  { id: 'c11', name: 'कृषि (Agriculture)', slug: 'agriculture', color: '#65a30d', subCategories: ['फसल', 'मौसम', 'किसान योजना'] },
-  { id: 'c12', name: 'खेल (Sports)', slug: 'sports', color: '#d97706', subCategories: ['क्रिकेट', 'स्थानीय'] },
-  { id: 'c13', name: 'मनोरंजन (Entertainment)', slug: 'entertainment', color: '#db2777', subCategories: ['बॉलीवुड', 'टीवी'] },
-  { id: 'c14', name: 'तकनीक (Technology)', slug: 'technology', color: '#0891b2', subCategories: ['मोबाइल', 'इंटरनेट'] },
-  { id: 'c15', name: 'स्वास्थ्य (Health)', slug: 'health', color: '#e11d48', subCategories: ['हेल्थ टिप्स', 'अस्पताल'] },
-  { id: 'c16', name: 'धर्म (Religion)', slug: 'religion', color: '#ca8a04', subCategories: ['मंदिर', 'त्योहार', 'राशिफल'] },
-  { id: 'c17', name: 'मौसम (Weather)', slug: 'weather', color: '#0284c7', subCategories: ['पूर्वानुमान', 'अलर्ट'] },
-  { id: 'c18', name: 'वीडियो (Videos)', slug: 'videos', color: '#dc2626', subCategories: ['ग्राउंड रिपोर्ट', 'इंटरव्यू'] },
-  { id: 'c19', name: 'फोटो गैलरी (Photo Gallery)', slug: 'photo-gallery', color: '#7c3aed', subCategories: ['कार्यक्रम', 'प्रकृति'] },
-  { id: 'c20', name: 'फैक्ट चेक (Fact Check)', slug: 'fact-check', color: '#059669', subCategories: ['वायरल सच'] },
-];
+export const CATEGORIES: Category[] = CATEGORIES_CONFIG.map(c => ({
+  id: c.id,
+  name: c.name,
+  slug: c.slug,
+  hindiName: c.hindiName,
+  englishName: c.englishName,
+  color: c.color,
+  subCategories: c.subCategories,
+  description: c.description,
+  aliases: c.aliases,
+  priority: c.priority,
+}));
 
 export const REPORTERS: Reporter[] = [
   { 
@@ -410,7 +409,7 @@ export const MOCK_ADS: AdSettings = {
 export const MOCK_SITE_SETTINGS: SiteSettings = {
   siteName: 'Damoh Daily News Network',
   tagline: 'दमोह एवं मध्य प्रदेश की निष्पक्ष व सटीक खबरें',
-  logoUrl: '/logo.png',
+  logoUrl: '/logo.svg',
   faviconUrl: '/favicon-v2.png',
   contactEmail: 'damohdailynewsnetwork@gmail.com',
   contactPhone: '',

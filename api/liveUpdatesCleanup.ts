@@ -138,6 +138,66 @@ function getFirebaseConfig(): { projectId: string; apiKey: string } {
   return { projectId, apiKey };
 }
 
+let cachedAdminToken: { token: string; expiresAt: number } | null = null;
+
+/**
+ * Obtains a Google OAuth2 Service Account access token for administrative Firestore access
+ */
+async function getFirestoreAdminAccessToken(): Promise<string | null> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedAdminToken && cachedAdminToken.expiresAt > now + 60) {
+    return cachedAdminToken.token;
+  }
+
+  const rawSA = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!rawSA) return null;
+
+  try {
+    const sa = JSON.parse(rawSA);
+    if (!sa.client_email || !sa.private_key) return null;
+
+    const header = { alg: "RS256", typ: "JWT" };
+    const claim = {
+      iss: sa.client_email,
+      scope: "https://www.googleapis.com/auth/datastore",
+      aud: "https://oauth2.googleapis.com/token",
+      exp: now + 3600,
+      iat: now
+    };
+
+    const encodedHeader = Buffer.from(JSON.stringify(header)).toString("base64url");
+    const encodedClaim = Buffer.from(JSON.stringify(claim)).toString("base64url");
+    const unsignedToken = `${encodedHeader}.${encodedClaim}`;
+
+    const signer = crypto.createSign("RSA-SHA256");
+    signer.update(unsignedToken);
+    const signature = signer.sign(sa.private_key, "base64url");
+    const signedJwt = `${unsignedToken}.${signature}`;
+
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: signedJwt
+      }).toString()
+    });
+
+    if (!tokenRes.ok) return null;
+    const tokenData = await tokenRes.json();
+    if (tokenData.access_token) {
+      cachedAdminToken = {
+        token: tokenData.access_token,
+        expiresAt: now + (tokenData.expires_in || 3600)
+      };
+      return tokenData.access_token;
+    }
+  } catch (err) {
+    console.warn("[LiveUpdates Cleanup] Notice: admin OAuth token not generated:", err);
+  }
+  return null;
+}
+
 export interface CleanupResult {
   success: boolean;
   scannedCount: number;
@@ -165,6 +225,11 @@ export async function performLiveUpdatesCleanup(): Promise<CleanupResult> {
 
   try {
     const { projectId, apiKey } = getFirebaseConfig();
+    const adminToken = await getFirestoreAdminAccessToken();
+    const authHeaders: Record<string, string> = adminToken
+      ? { Authorization: `Bearer ${adminToken}` }
+      : {};
+
     const now = Date.now();
     const sevenDaysAgoIso = new Date(now - SEVEN_DAYS_MS).toISOString();
 
@@ -189,7 +254,7 @@ export async function performLiveUpdatesCleanup(): Promise<CleanupResult> {
 
     const response = await fetch(queryUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify(requestBody)
     });
 
@@ -197,7 +262,7 @@ export async function performLiveUpdatesCleanup(): Promise<CleanupResult> {
       const errText = await response.text().catch(() => "");
       console.warn(`[LiveUpdates Cleanup] Firestore runQuery returned status ${response.status}: ${errText}`);
       // Fallback: fetch collection documents list to inspect
-      return await fallbackPerformCleanup(projectId, apiKey, now);
+      return await fallbackPerformCleanup(projectId, apiKey, now, authHeaders);
     }
 
     const items: Array<{ document?: { name: string; fields: Record<string, FirestoreFieldVal> } }> = await response.json();
@@ -251,7 +316,10 @@ export async function performLiveUpdatesCleanup(): Promise<CleanupResult> {
         : `https://firestore.googleapis.com/v1/${docName}`;
 
       try {
-        const delRes = await fetch(deleteUrl, { method: "DELETE" });
+        const delRes = await fetch(deleteUrl, {
+          method: "DELETE",
+          headers: { ...authHeaders }
+        });
         if (delRes.ok || delRes.status === 404) {
           result.deletedCount++;
           result.deletedIds.push(docId);
@@ -281,7 +349,12 @@ export async function performLiveUpdatesCleanup(): Promise<CleanupResult> {
 /**
  * Fallback cleanup that lists documents in live_updates collection and inspects timestamp
  */
-async function fallbackPerformCleanup(projectId: string, apiKey: string, now: number): Promise<CleanupResult> {
+async function fallbackPerformCleanup(
+  projectId: string, 
+  apiKey: string, 
+  now: number, 
+  authHeaders: Record<string, string> = {}
+): Promise<CleanupResult> {
   const result: CleanupResult = {
     success: true,
     scannedCount: 0,
@@ -296,7 +369,9 @@ async function fallbackPerformCleanup(projectId: string, apiKey: string, now: nu
       ? `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/live_updates?pageSize=100&key=${apiKey}`
       : `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/live_updates?pageSize=100`;
 
-    const res = await fetch(listUrl);
+    const res = await fetch(listUrl, {
+      headers: { ...authHeaders }
+    });
     if (!res.ok) return result;
 
     const data = await res.json();
@@ -329,7 +404,10 @@ async function fallbackPerformCleanup(projectId: string, apiKey: string, now: nu
         ? `https://firestore.googleapis.com/v1/${doc.name}?key=${apiKey}`
         : `https://firestore.googleapis.com/v1/${doc.name}`;
 
-      const delRes = await fetch(delUrl, { method: "DELETE" });
+      const delRes = await fetch(delUrl, { 
+        method: "DELETE",
+        headers: { ...authHeaders }
+      });
       if (delRes.ok || delRes.status === 404) {
         result.deletedCount++;
         result.deletedIds.push(docId);

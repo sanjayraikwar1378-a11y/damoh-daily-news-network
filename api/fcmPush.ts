@@ -80,7 +80,7 @@ async function getFCMAccessToken(serviceAccountJson: any): Promise<string | null
     const header = { alg: "RS256", typ: "JWT" };
     const claim = {
       iss: clientEmail,
-      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      scope: "https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/datastore",
       aud: "https://oauth2.googleapis.com/token",
       exp: now + 3600,
       iat: now
@@ -169,10 +169,14 @@ export async function fetchRegisteredFCMTokens(projectId: string, apiKey: string
 /**
  * Removes or marks inactive an invalid/expired FCM registration token in Firestore
  */
-async function invalidateFCMToken(docName: string, apiKey: string): Promise<void> {
+async function invalidateFCMToken(docName: string, apiKey: string, serviceAccountJson?: any): Promise<void> {
   try {
+    const oauthToken = serviceAccountJson ? await getFCMAccessToken(serviceAccountJson) : null;
     const url = apiKey ? `https://firestore.googleapis.com/v1/${docName}?key=${apiKey}` : `https://firestore.googleapis.com/v1/${docName}`;
-    await fetch(url, { method: "DELETE" });
+    await fetch(url, { 
+      method: "DELETE",
+      headers: oauthToken ? { Authorization: `Bearer ${oauthToken}` } : {}
+    });
     console.log(`[FCM Server] Purged stale/invalid token document: ${docName}`);
   } catch (err) {
     console.warn(`[FCM Server] Failed to delete stale token ${docName}:`, err);
@@ -324,7 +328,7 @@ function parseServiceAccount(raw: string | undefined): any | null {
             const errData = await res.json().catch(() => ({}));
             const errorCode = errData?.error?.details?.[0]?.errorCode || errData?.error?.status || "";
             if (errorCode === "UNREGISTERED" || errorCode === "INVALID_ARGUMENT" || res.status === 404) {
-              await invalidateFCMToken(rec.docName, apiKey);
+              await invalidateFCMToken(rec.docName, apiKey, serviceAccountJson);
               invalidTokensRemoved++;
             }
           }

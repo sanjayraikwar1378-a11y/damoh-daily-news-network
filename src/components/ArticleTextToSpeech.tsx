@@ -1,239 +1,196 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Volume2, Pause, Play, Square, Gauge } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Volume2, Pause, Play, Square, Gauge, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ttsEngine, ArticleForTTS, TTSState } from "@/lib/ttsEngine";
 
-export interface ArticleForTTS {
-  title: string;
-  excerpt?: string;
-  content: string;
-}
+export type { ArticleForTTS };
 
+/**
+ * Backward compatibility wrapper for getReadableArticleText
+ */
 export function getReadableArticleText(article: ArticleForTTS): string {
-  if (!article) return "";
-
-  const titleText = article.title ? article.title.trim() : "";
-  const cleanExcerpt = article.excerpt
-    ? article.excerpt.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-    : "";
-  const cleanContent = article.content
-    ? article.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
-    : "";
-
-  const parts: string[] = [];
-  if (titleText) parts.push(titleText);
-  if (cleanExcerpt && !cleanContent.startsWith(cleanExcerpt)) {
-    parts.push(cleanExcerpt);
-  }
-  if (cleanContent) parts.push(cleanContent);
-
-  return parts.join(". ");
+  return ttsEngine.cleanArticleText(article);
 }
 
 interface ArticleTextToSpeechProps {
   article: ArticleForTTS;
+  className?: string;
 }
 
-export function ArticleTextToSpeech({ article }: ArticleTextToSpeechProps) {
-  // Safe check for Web Speech API availability
-  const isSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [rate, setRate] = useState<number>(1);
+export function ArticleTextToSpeech({ article, className = "" }: ArticleTextToSpeechProps) {
+  const [mounted, setMounted] = useState(false);
+  const [ttsState, setTtsState] = useState<TTSState>(() => ttsEngine.getState());
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
 
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  // Subscribe to singleton TTS engine
+  useEffect(() => {
+    setMounted(true);
+    const unsubscribe = ttsEngine.subscribe((nextState) => {
+      setTtsState(nextState);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
-  // Stop speech when navigating or unmounting
+  // Stop playback when navigating to a different article
+  const currentArticleKey = article?.id || article?.slug || article?.title;
   useEffect(() => {
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        try {
-          window.speechSynthesis.cancel();
-        } catch {}
+      // Only stop if this specific article was the one playing
+      if (ttsEngine.getState().activeArticleId === currentArticleKey) {
+        ttsEngine.stop();
       }
     };
-  }, [article.title]);
+  }, [currentArticleKey]);
 
-  if (!isSupported) {
-    return null;
-  }
+  // Handle client-side support check safely
+  const isSupported = mounted ? ttsState.isSupported : true;
 
-  const findHindiVoice = (): SpeechSynthesisVoice | null => {
-    try {
-      const voices = window.speechSynthesis.getVoices();
-      if (!voices || voices.length === 0) return null;
+  const isActive = ttsState.activeArticleId === currentArticleKey;
+  const isPlaying = isActive && ttsState.isPlaying;
+  const isPaused = isActive && ttsState.isPaused;
+  const currentRate = ttsState.rate;
 
-      // First priority: Exact or prefix match for 'hi'
-      const hiVoice = voices.find(v => v.lang && (v.lang.toLowerCase().startsWith("hi") || v.lang.toLowerCase().includes("hindi")));
-      if (hiVoice) return hiVoice;
-
-      // Second priority: Any voice matching 'hi-IN'
-      return voices.find(v => v.lang && v.lang.toLowerCase().includes("hi-in")) || null;
-    } catch {
-      return null;
-    }
+  const handlePlayClick = () => {
+    if (!mounted || !article) return;
+    ttsEngine.play(article);
   };
 
-  const handleStartSpeaking = (customRate?: number) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-
-    try {
-      window.speechSynthesis.cancel(); // Stop any existing speech
-
-      const textToRead = getReadableArticleText(article);
-      if (!textToRead) return;
-
-      const utterance = new SpeechSynthesisUtterance(textToRead);
-      utterance.lang = "hi-IN";
-      utterance.rate = customRate ?? rate;
-
-      const voice = findHindiVoice();
-      if (voice) {
-        utterance.voice = voice;
-      }
-
-      utterance.onend = () => {
-        setIsPlaying(false);
-        setIsPaused(false);
-        utteranceRef.current = null;
-      };
-
-      utterance.onerror = (e) => {
-        // Handle normal cancellation errors gracefully
-        if (e.error !== "interrupted" && e.error !== "canceled") {
-          console.warn("SpeechSynthesis error:", e.error);
-        }
-        setIsPlaying(false);
-        setIsPaused(false);
-        utteranceRef.current = null;
-      };
-
-      utteranceRef.current = utterance;
-      setIsPlaying(true);
-      setIsPaused(false);
-
-      window.speechSynthesis.speak(utterance);
-    } catch (err) {
-      console.warn("Failed to start SpeechSynthesis:", err);
-      setIsPlaying(false);
-      setIsPaused(false);
-    }
+  const handlePauseClick = () => {
+    ttsEngine.pause();
   };
 
-  const handleTogglePlayPause = () => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-
-    if (!isPlaying) {
-      handleStartSpeaking();
-      return;
-    }
-
-    if (isPaused) {
-      try {
-        window.speechSynthesis.resume();
-        setIsPaused(false);
-      } catch {
-        handleStartSpeaking();
-      }
-    } else {
-      try {
-        window.speechSynthesis.pause();
-        setIsPaused(true);
-      } catch {
-        handleStop();
-      }
-    }
+  const handleResumeClick = () => {
+    ttsEngine.resume();
   };
 
-  const handleStop = () => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-    } catch {}
-    setIsPlaying(false);
-    setIsPaused(false);
-    utteranceRef.current = null;
+  const handleStopClick = () => {
+    ttsEngine.stop();
   };
 
   const handleRateChange = (newRate: number) => {
-    setRate(newRate);
+    ttsEngine.setRate(newRate);
     setShowSpeedMenu(false);
-    if (isPlaying) {
-      handleStartSpeaking(newRate);
-    }
   };
 
+  // If client has finished mounting and browser genuinely does not support Web Speech
+  if (mounted && !isSupported) {
+    return null;
+  }
+
   return (
-    <div className="inline-flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/60 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-200 shadow-xs">
+    <div
+      className={`inline-flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/60 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-200 shadow-xs transition-all ${className}`}
+    >
       {!isPlaying ? (
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => handleStartSpeaking()}
-          className="h-7 px-2.5 text-xs font-bold text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-1.5 transition-colors"
+          onClick={handlePlayClick}
+          className="h-7 px-2.5 text-xs font-bold text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-1.5 transition-colors cursor-pointer"
           aria-label="खबर सुनें"
-          title="खबर सुनें (Text to Speech)"
+          title="खबर सुनें (Hindi Text to Speech)"
         >
           <Volume2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400 animate-pulse" />
           <span>खबर सुनें</span>
         </Button>
       ) : (
         <>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleTogglePlayPause}
-            className="h-7 px-2 text-xs font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 flex items-center gap-1 transition-colors"
-            aria-label={isPaused ? "जारी रखें" : "रोकें"}
-            title={isPaused ? "जारी रखें (Resume)" : "रोकें (Pause)"}
-          >
-            {isPaused ? (
-              <>
-                <Play className="h-3.5 w-3.5 fill-current" />
-                <span>जारी रखें</span>
-              </>
-            ) : (
-              <>
-                <Pause className="h-3.5 w-3.5 fill-current" />
-                <span>रोकें</span>
-              </>
-            )}
-          </Button>
+          {/* Pause / Resume Button */}
+          {isPaused ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleResumeClick}
+              className="h-7 px-2 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center gap-1 transition-colors cursor-pointer"
+              aria-label="जारी रखें"
+              title="जारी रखें (Resume Reading)"
+            >
+              <Play className="h-3.5 w-3.5 fill-current" />
+              <span>जारी रखें</span>
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePauseClick}
+              className="h-7 px-2 text-xs font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 flex items-center gap-1 transition-colors cursor-pointer"
+              aria-label="रोकें"
+              title="रोकें (Pause Reading)"
+            >
+              <Pause className="h-3.5 w-3.5 fill-current" />
+              <span>रोकें</span>
+            </Button>
+          )}
 
+          {/* Animated Audio Equalizer Wave Indicator */}
+          <div
+            className="flex items-center gap-0.5 px-1 py-1"
+            title={isPaused ? "रुक गया है" : "पढ़ा जा रहा है..."}
+          >
+            <span
+              className={`w-0.5 bg-red-600 rounded-full transition-all duration-300 ${
+                isPaused ? "h-1.5" : "h-3 animate-pulse"
+              }`}
+            />
+            <span
+              className={`w-0.5 bg-red-600 rounded-full transition-all duration-200 ${
+                isPaused ? "h-2" : "h-4 animate-bounce"
+              }`}
+            />
+            <span
+              className={`w-0.5 bg-red-600 rounded-full transition-all duration-300 ${
+                isPaused ? "h-1" : "h-2.5 animate-pulse"
+              }`}
+            />
+          </div>
+
+          {/* Progress Indicator (e.g. 2/8) */}
+          {ttsState.totalChunks > 1 && (
+            <span
+              className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 tabular-nums px-1"
+              title={`भाग ${ttsState.currentChunk} / ${ttsState.totalChunks}`}
+            >
+              {ttsState.currentChunk}/{ttsState.totalChunks}
+            </span>
+          )}
+
+          {/* Stop Button */}
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleStop}
-            className="h-7 px-2 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:text-red-600 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 flex items-center gap-1 transition-colors"
+            onClick={handleStopClick}
+            className="h-7 px-2 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:text-red-600 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 flex items-center gap-1 transition-colors cursor-pointer"
             aria-label="बंद करें"
-            title="बंद करें (Stop)"
+            title="बंद करें (Stop Reading)"
           >
             <Square className="h-3 w-3 fill-current" />
             <span className="hidden sm:inline">बंद करें</span>
           </Button>
 
-          {/* Speed Control Selector */}
+          {/* Speed Selector Menu */}
           <div className="relative">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-              className="h-7 px-1.5 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 flex items-center gap-0.5"
-              title="गति बदलें (Speed)"
+              className="h-7 px-1.5 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white flex items-center gap-0.5 cursor-pointer"
+              title="गति बदलें (Speech Rate)"
             >
               <Gauge className="h-3 w-3" />
-              <span>{rate}x</span>
+              <span>{currentRate}x</span>
             </Button>
 
             {showSpeedMenu && (
-              <div className="absolute right-0 top-full mt-1 z-20 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg p-1 flex flex-col gap-0.5 min-w-[65px]">
+              <div className="absolute right-0 top-full mt-1 z-30 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg p-1 flex flex-col gap-0.5 min-w-[70px]">
                 {[0.75, 1, 1.25, 1.5].map((speed) => (
                   <button
                     key={speed}
+                    type="button"
                     onClick={() => handleRateChange(speed)}
-                    className={`text-left text-[11px] px-2 py-1 rounded-xs font-medium transition-colors ${
-                      rate === speed
+                    className={`text-left text-[11px] px-2 py-1 rounded-xs font-medium transition-colors cursor-pointer ${
+                      currentRate === speed
                         ? "bg-red-600 text-white font-bold"
                         : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                     }`}
@@ -245,6 +202,16 @@ export function ArticleTextToSpeech({ article }: ArticleTextToSpeechProps) {
             )}
           </div>
         </>
+      )}
+
+      {/* Error notification if speech engine encounters an issue */}
+      {ttsState.error && isActive && (
+        <span
+          className="text-red-600 dark:text-red-400 inline-flex items-center gap-1 text-[10px] pl-1"
+          title={ttsState.error}
+        >
+          <AlertCircle className="h-3 w-3 shrink-0" />
+        </span>
       )}
     </div>
   );

@@ -25,9 +25,13 @@ async function startServer() {
   }
 
   // Global Error Handler
-  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error("Unhandled Express Error:", err);
-    res.status(200).send("OK");
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error("Unhandled Express Error:", err?.message || err);
+    if (res.headersSent) return;
+    if (req.path && req.path.startsWith("/api/")) {
+      return res.status(500).json({ success: false, error: "Internal server error" });
+    }
+    res.status(500).send("Internal Server Error");
   });
 
   app.listen(PORT, "0.0.0.0", () => {

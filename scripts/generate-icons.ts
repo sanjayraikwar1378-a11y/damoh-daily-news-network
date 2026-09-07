@@ -520,33 +520,33 @@ async function buildAllLogoAssets() {
 
   console.log('Generating Official Logo & Brand Assets...');
 
-  // 1. Write Vector SVGs
-  fs.writeFileSync(path.join(publicDir, 'logo.svg'), officialLogoSvg.trim());
+  // 1. Write Vector SVGs (preserve high-definition horizontal master logo if present)
+  if (!fs.existsSync(path.join(publicDir, 'logo.svg'))) {
+    fs.writeFileSync(path.join(publicDir, 'logo.svg'), officialLogoSvg.trim());
+  }
   fs.writeFileSync(path.join(publicDir, 'icon.svg'), officialMasterIconSvg.trim());
   fs.writeFileSync(path.join(publicDir, 'icon-v2.svg'), officialMasterIconSvg.trim());
-  console.log('Created public/logo.svg, public/icon.svg, and public/icon-v2.svg');
+  console.log('Maintained public/logo.svg, updated public/icon.svg, and public/icon-v2.svg');
 
-  const logoBuffer = Buffer.from(officialLogoSvg);
+  const currentLogoSvg = fs.readFileSync(path.join(publicDir, 'logo.svg'), 'utf8');
+  const logoBuffer = Buffer.from(currentLogoSvg);
   const masterIconBuffer = Buffer.from(officialMasterIconSvg);
 
-  // 2. Main Logo WebP (1024x512 with transparent background)
-  await sharp(logoBuffer)
-    .resize(1024, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  // 2. High-DPI Main Logo WebP with native density
+  await sharp(logoBuffer, { density: 240 })
     .webp({ quality: 95, effort: 6 })
     .toFile(path.join(publicDir, 'logo.webp'));
   console.log('Created public/logo.webp');
 
-  // 3. Medium / Mobile Logo WebP (512x256)
-  await sharp(logoBuffer)
-    .resize(512, 256, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  // 3. Medium / Mobile Logo WebP
+  await sharp(logoBuffer, { density: 120 })
     .webp({ quality: 92, effort: 6 })
     .toFile(path.join(publicDir, 'logo-sm.webp'));
   console.log('Created public/logo-sm.webp');
 
-  // 4. High-Res Logo PNG (1024x512)
-  await sharp(logoBuffer)
-    .resize(1024, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .png({ quality: 100, compressionLevel: 9 })
+  // 4. Ultra High-Res Logo PNG (density 240, 300dpi crispness)
+  await sharp(logoBuffer, { density: 240 })
+    .png({ quality: 100, compressionLevel: 6 })
     .toFile(path.join(publicDir, 'logo.png'));
   console.log('Created public/logo.png');
 

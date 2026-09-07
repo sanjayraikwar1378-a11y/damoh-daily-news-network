@@ -4,6 +4,8 @@
  * Unsigned upload fallback has been strictly removed for security.
  */
 
+import { auth } from "./firebase";
+
 export type CloudinaryFolder = 'news' | 'reporters' | 'gallery' | 'logos' | 'banners' | string;
 
 export interface CloudinaryUploadResponse {
@@ -122,9 +124,17 @@ export async function uploadToCloudinary(
 
   // Secure Signed Upload via Server Signing Route (/api/cloudinary-sign)
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (auth.currentUser) {
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+      } catch {}
+    }
+
     const signRes = await fetch("/api/cloudinary-sign", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         folder: folderPath,
         upload_preset: config.uploadPreset,

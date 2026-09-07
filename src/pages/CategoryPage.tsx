@@ -9,6 +9,7 @@ import { FirestoreErrorBanner } from "@/components/FirestoreErrorBanner"
 import { ResponsiveImage } from "@/components/ResponsiveImage"
 import { PrefetchLink } from "@/components/PrefetchLink"
 import { Button } from "@/components/ui/button"
+import { findCategoryBySlug } from "@/config/categories"
 
 export function CategoryPage() {
   const { slug } = useParams()
@@ -26,7 +27,8 @@ export function CategoryPage() {
   const [isFetchingLocal, setIsFetchingLocal] = useState<boolean>(true)
   const loaderRef = useRef<HTMLDivElement | null>(null)
   
-  const category = useMemo(() => categories.find(c => c.slug === slug), [categories, slug])
+  // Independent, synchronous lookup using centralized categories source of truth
+  const category = useMemo(() => findCategoryBySlug(slug, categories), [categories, slug])
 
   // SEO effect for title, meta tags, and canonical URL
   useEffect(() => {
@@ -40,7 +42,7 @@ export function CategoryPage() {
       }
       metaDesc.setAttribute('content', `${category.name} की सभी ताज़ा और बड़ी ख़बरें - Damoh Daily News Network.`)
 
-      const fullUrl = `${window.location.origin}/category/${slug}`
+      const fullUrl = `${window.location.origin}/category/${category.slug}`
       let canonicalEl = document.querySelector('link[rel="canonical"]')
       if (!canonicalEl) {
         canonicalEl = document.createElement('link')
@@ -49,13 +51,26 @@ export function CategoryPage() {
       }
       canonicalEl.setAttribute('href', fullUrl)
     }
-  }, [category, slug])
+  }, [category])
 
   // Filter existing in-memory articles matching this category
   const categoryArticles = useMemo(() => {
     if (!category) return []
+    const catId = category.id
+    const catSlug = category.slug
+    const aliases = category.aliases || []
+
     return articles
-      .filter(a => (a.status || 'published') === 'published' && a.categoryIds?.includes(category.id))
+      .filter(a => {
+        if ((a.status || 'published') !== 'published') return false
+        if (a.categoryIds && Array.isArray(a.categoryIds)) {
+          if (a.categoryIds.includes(catId) || a.categoryIds.includes(catSlug)) return true
+          if (aliases.some(alias => a.categoryIds.includes(alias))) return true
+        }
+        if (a.category === catId || a.category === catSlug || a.category === category.name) return true
+        if (a.categorySlug && (a.categorySlug === catSlug || a.categorySlug === catId)) return true
+        return false
+      })
       .sort((a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime())
   }, [category, articles])
 
@@ -63,8 +78,12 @@ export function CategoryPage() {
   useEffect(() => {
     setVisibleCount(6) // Reset pagination on category change
     if (category?.id) {
+      const catId = category.id
+      const catSlug = category.slug
       const hasCachedArticles = articles.some(
-        a => (a.status || 'published') === 'published' && a.categoryIds?.includes(category.id)
+        a => (a.status || 'published') === 'published' && (
+          a.categoryIds?.includes(catId) || a.categoryIds?.includes(catSlug)
+        )
       )
       if (!hasCachedArticles) {
         setIsFetchingLocal(true)
@@ -78,7 +97,7 @@ export function CategoryPage() {
     } else {
       setIsFetchingLocal(false)
     }
-  }, [slug, category?.id, fetchCategoryArticles])
+  }, [category?.id, category?.slug, fetchCategoryArticles])
 
   const visibleArticles = useMemo(() => categoryArticles.slice(0, visibleCount), [categoryArticles, visibleCount])
 
@@ -99,6 +118,24 @@ export function CategoryPage() {
 
     return () => observer.disconnect()
   }, [visibleCount, categoryArticles.length])
+
+  // If category is not recognized in centralized config or dynamic categories -> Show 404
+  if (!category) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center max-w-md space-y-4">
+        <div className="w-14 h-14 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center text-zinc-400 mx-auto">
+          <FolderOpen className="h-7 w-7" />
+        </div>
+        <h2 className="text-xl font-bold text-zinc-900 dark:text-white">श्रेणी नहीं मिली (Category not found)</h2>
+        <p className="text-xs text-zinc-500">आप जिस श्रेणी को खोज रहे हैं वह उपलब्ध नहीं है या हटा दी गई है।</p>
+        <Link to="/">
+          <Button variant="outline" className="text-xs font-bold mt-2">
+            <ArrowLeft className="h-4 w-4 mr-1.5" /> मुख्य पृष्ठ पर जाएं (Home)
+          </Button>
+        </Link>
+      </div>
+    )
+  }
 
   // 1. Error state if Firestore sync failed and no articles in memory
   if (firestoreSyncError && categoryArticles.length === 0 && !hasArticlesLoaded) {
@@ -130,24 +167,8 @@ export function CategoryPage() {
     )
   }
 
-  const isWeatherCategory = slug === 'weather' || Boolean(category?.name && (category.name.includes('मौसम') || category.name.toLowerCase().includes('weather')))
-  
-  if (!category && hasArticlesLoaded) {
-    return (
-      <div className="container mx-auto px-4 py-20 text-center max-w-md space-y-4">
-        <div className="w-14 h-14 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center text-zinc-400 mx-auto">
-          <FolderOpen className="h-7 w-7" />
-        </div>
-        <h2 className="text-xl font-bold text-zinc-900 dark:text-white">श्रेणी नहीं मिली (Category not found)</h2>
-        <p className="text-xs text-zinc-500">आप जिस श्रेणी को खोज रहे हैं वह उपलब्ध नहीं है या हटा दी गई है।</p>
-        <Link to="/">
-          <Button variant="outline" className="text-xs font-bold mt-2">
-            <ArrowLeft className="h-4 w-4 mr-1.5" /> मुख्य पृष्ठ पर जाएं (Home)
-          </Button>
-        </Link>
-      </div>
-    )
-  }
+  const isWeatherCategory = category.slug === 'weather' || Boolean(category?.name && (category.name.includes('मौसम') || category.name.toLowerCase().includes('weather')))
+
   
   return (
     <motion.div 

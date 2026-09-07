@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import crypto from "crypto";
+import { verifyAdminAuth } from "./auth";
 
 interface ExtendedRequest extends IncomingMessage {
   body?: any;
@@ -13,8 +14,8 @@ interface ExtendedResponse extends ServerResponse {
 export default async function handler(req: ExtendedRequest, res: ExtendedResponse) {
   // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-key, x-admin-secret");
 
   if (req.method === "OPTIONS") {
     res.status(200).json({ ok: true });
@@ -22,7 +23,18 @@ export default async function handler(req: ExtendedRequest, res: ExtendedRespons
   }
 
   if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
+    res.status(405).json({ success: false, error: "Method not allowed. Only POST is accepted." });
+    return;
+  }
+
+  // Enforce Admin Authorization
+  const authCheck = await verifyAdminAuth(req);
+  if (!authCheck.authorized) {
+    res.status(authCheck.status || 401).json({
+      success: false,
+      signed: false,
+      error: authCheck.error || "Unauthorized: Admin authorization required"
+    });
     return;
   }
 
@@ -44,21 +56,41 @@ export default async function handler(req: ExtendedRequest, res: ExtendedRespons
     }
 
     const { folder, upload_preset, timestamp } = body || {};
+
+    // Validate inputs
+    if (folder && (typeof folder !== "string" || folder.includes("..") || folder.length > 150 || !/^[a-zA-Z0-9_\-\/]+$/.test(folder))) {
+      res.status(400).json({ success: false, signed: false, error: "Invalid folder parameter" });
+      return;
+    }
+
+    if (upload_preset && (typeof upload_preset !== "string" || upload_preset.length > 100 || !/^[a-zA-Z0-9_\-]+$/.test(upload_preset))) {
+      res.status(400).json({ success: false, signed: false, error: "Invalid upload_preset parameter" });
+      return;
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const parsedTs = Number(timestamp);
+    if (!timestamp || isNaN(parsedTs) || Math.abs(nowSec - parsedTs) > 900) {
+      res.status(400).json({ success: false, signed: false, error: "Invalid or expired timestamp" });
+      return;
+    }
+
     const apiKey = process.env.CLOUDINARY_API_KEY || process.env.VITE_CLOUDINARY_API_KEY || "";
     const apiSecret = process.env.CLOUDINARY_API_SECRET || "";
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.VITE_CLOUDINARY_CLOUD_NAME || "damoh-daily-news";
 
     if (!apiSecret) {
-      res.status(200).json({
+      res.status(500).json({
+        success: false,
         signed: false,
-        message: "CLOUDINARY_API_SECRET not set on server. Falling back to unsigned mode or client preset."
+        error: "Server configuration missing: CLOUDINARY_API_SECRET"
       });
       return;
     }
 
     const paramsToSign: Record<string, string> = {};
     if (folder) paramsToSign.folder = folder;
-    if (timestamp) paramsToSign.timestamp = String(timestamp);
+    paramsToSign.timestamp = String(parsedTs);
     if (upload_preset) paramsToSign.upload_preset = upload_preset;
 
     const sortedKeys = Object.keys(paramsToSign).sort();
@@ -67,14 +99,16 @@ export default async function handler(req: ExtendedRequest, res: ExtendedRespons
     const signature = crypto.createHash("sha1").update(stringToSign).digest("hex");
 
     res.status(200).json({
+      success: true,
       signed: true,
       signature,
-      timestamp,
+      timestamp: parsedTs,
       apiKey,
       cloudName,
       uploadPreset: upload_preset
     });
   } catch (err: any) {
-    res.status(200).json({ signed: false, error: err?.message || "Failed to generate Cloudinary signature" });
+    console.warn("[Cloudinary Sign Error]:", err?.message || err);
+    res.status(500).json({ success: false, signed: false, error: "Failed to generate Cloudinary signature" });
   }
 }

@@ -170,6 +170,27 @@ const ARTICLES_LIST_STORAGE_KEY = 'damoh_cached_articles_v1';
 
 export function getStoredArticlesList(): Article[] {
   try {
+    // 1. Check if homepage SSR articles were provided in window or script tag
+    if (typeof window !== 'undefined') {
+      const w = window as any;
+      if (Array.isArray(w.__INITIAL_HOMEPAGE_ARTICLES__) && w.__INITIAL_HOMEPAGE_ARTICLES__.length > 0) {
+        w.__INITIAL_HOMEPAGE_ARTICLES__.forEach(saveArticleToCache);
+        return w.__INITIAL_HOMEPAGE_ARTICLES__;
+      }
+      const scriptEl = document.getElementById('__INITIAL_HOMEPAGE_ARTICLES__');
+      if (scriptEl && scriptEl.textContent) {
+        try {
+          const parsed = JSON.parse(scriptEl.textContent);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            w.__INITIAL_HOMEPAGE_ARTICLES__ = parsed;
+            parsed.forEach(saveArticleToCache);
+            return parsed;
+          }
+        } catch {}
+      }
+    }
+
+    // 2. Fall back to persistent localStorage
     const raw = localStorage.getItem(ARTICLES_LIST_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);

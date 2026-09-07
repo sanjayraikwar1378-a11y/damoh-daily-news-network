@@ -21,15 +21,15 @@ export function MainLayout() {
       <footer className="bg-zinc-950 text-zinc-400 py-10 md:py-12 border-t border-zinc-800 mt-auto">
         <div className="container mx-auto px-4 max-w-7xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
           <div className="space-y-3">
-            <Link to="/" className="inline-block">
+            <Link to="/" className="inline-block hover:opacity-95 transition-opacity">
               <LogoImage 
                 src={siteSettings.logoUrl} 
                 alt={siteSettings.siteName || "Damoh Daily News Network"} 
-                width={280}
-                height={64}
+                width={326}
+                height={70}
                 priority={false}
-                style={{ aspectRatio: '280 / 64' }}
-                className="h-12 sm:h-14 md:h-16 w-auto max-w-[240px] sm:max-w-[280px] object-contain" 
+                style={{ aspectRatio: '1166 / 250' }}
+                className="h-12 sm:h-14 md:h-16 w-auto max-w-[260px] sm:max-w-[310px] object-contain object-left select-none" 
               />
             </Link>
             <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed pt-1">

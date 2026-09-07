@@ -5,7 +5,7 @@ import {
   Reporter, 
   Comment, 
   MediaItem, 
-  LiveUpdate,
+  LiveUpdate, 
   AdSettings, 
   SiteSettings, 
   MarketRates,
@@ -16,8 +16,10 @@ import {
   MOCK_SITE_SETTINGS,
   ArticleStatus
 } from '@/data/mock';
+import { sortCategoriesByPriority, getCategoryPriority } from '@/config/categories';
 import { 
   db, 
+  auth,
   collection, 
   doc, 
   setDoc, 
@@ -38,8 +40,9 @@ import { saveArticlesToCache, getStoredArticlesList, saveArticlesListToStorage }
 import { sanitizeSlug, generateUniqueSlug, createSlug, stripGeneratedSuffixes, cleanArticleSlugIfNeeded } from '@/lib/slug';
 import { notifyIndexNow } from '@/lib/indexnow';
 import { dispatchArticlePushNotification } from '@/lib/pushNotifications';
+import { findCategoryBySlug, normalizeCategorySlug, CATEGORIES_CONFIG } from '@/config/categories';
 
-export { createSlug, sanitizeSlug, generateUniqueSlug, stripGeneratedSuffixes };
+export { createSlug, sanitizeSlug, generateUniqueSlug, stripGeneratedSuffixes, findCategoryBySlug, normalizeCategorySlug };
 
 interface NewsContextType {
   // Articles
@@ -126,7 +129,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
   const [loadingCategoryIds, setLoadingCategoryIds] = useState<Record<string, boolean>>({});
   const [loadedCategoryIds, setLoadedCategoryIds] = useState<Record<string, boolean>>({});
   const [liveUpdates, setLiveUpdates] = useState<LiveUpdate[]>([]);
-  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>(() => sortCategoriesByPriority(INITIAL_CATEGORIES));
   const [reporters, setReporters] = useState<Reporter[]>(INITIAL_REPORTERS);
   const [comments, setComments] = useState<Comment[]>([]);
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -271,27 +274,45 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     return Boolean(loadedCategoryIds[categoryId]);
   }, [loadedCategoryIds]);
 
-  const fetchCategoryArticles = useCallback(async (categoryId: string): Promise<Article[]> => {
-    if (!categoryId) return [];
-    setLoadingCategoryIds(prev => ({ ...prev, [categoryId]: true }));
+  const fetchCategoryArticles = useCallback(async (categoryIdOrSlug: string): Promise<Article[]> => {
+    if (!categoryIdOrSlug) return [];
+    
+    // Resolve to canonical category to obtain canonical ID and slug
+    const canonical = findCategoryBySlug(categoryIdOrSlug, categories);
+    const primaryId = canonical?.id || categoryIdOrSlug;
+    const primarySlug = canonical?.slug || normalizeCategorySlug(categoryIdOrSlug);
+
+    setLoadingCategoryIds(prev => ({ ...prev, [primaryId]: true, [primarySlug]: true, [categoryIdOrSlug]: true }));
     try {
       const q = query(
         collection(db, "articles"),
-        where("categoryIds", "array-contains", categoryId),
+        where("categoryIds", "array-contains", primaryId),
         limit(50)
       );
       const snap = await getDocs(q);
-      if (snap.empty) {
-        setLoadedCategoryIds(prev => ({ ...prev, [categoryId]: true }));
-        setLoadingCategoryIds(prev => ({ ...prev, [categoryId]: false }));
-        return [];
-      }
       const catList: Article[] = [];
       snap.forEach(d => {
         const art = d.data() as Article;
         const { article: cleaned } = cleanArticleSlugIfNeeded(art);
         catList.push(cleaned);
       });
+
+      // If no articles found by primaryId and primarySlug is different, try querying by primarySlug
+      if (catList.length === 0 && primarySlug && primarySlug !== primaryId) {
+        try {
+          const qSlug = query(
+            collection(db, "articles"),
+            where("categoryIds", "array-contains", primarySlug),
+            limit(50)
+          );
+          const snapSlug = await getDocs(qSlug);
+          snapSlug.forEach(d => {
+            const art = d.data() as Article;
+            const { article: cleaned } = cleanArticleSlugIfNeeded(art);
+            catList.push(cleaned);
+          });
+        } catch {}
+      }
 
       setArticles(prev => {
         const existingIds = new Set(prev.map(a => a.id));
@@ -303,16 +324,16 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         saveArticlesToCache(merged);
         return merged;
       });
-      setLoadedCategoryIds(prev => ({ ...prev, [categoryId]: true }));
-      setLoadingCategoryIds(prev => ({ ...prev, [categoryId]: false }));
+      setLoadedCategoryIds(prev => ({ ...prev, [primaryId]: true, [primarySlug]: true, [categoryIdOrSlug]: true }));
+      setLoadingCategoryIds(prev => ({ ...prev, [primaryId]: false, [primarySlug]: false, [categoryIdOrSlug]: false }));
       return catList;
     } catch (err) {
       console.warn("fetchCategoryArticles notice:", err);
-      setLoadedCategoryIds(prev => ({ ...prev, [categoryId]: true }));
-      setLoadingCategoryIds(prev => ({ ...prev, [categoryId]: false }));
+      setLoadedCategoryIds(prev => ({ ...prev, [primaryId]: true, [primarySlug]: true, [categoryIdOrSlug]: true }));
+      setLoadingCategoryIds(prev => ({ ...prev, [primaryId]: false, [primarySlug]: false, [categoryIdOrSlug]: false }));
       return [];
     }
-  }, []);
+  }, [categories]);
 
   // Search remote articles for older news matching query
   const searchArticlesRemote = useCallback(async (queryStr: string): Promise<Article[]> => {
@@ -420,9 +441,48 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
 
         if (catSnap.status === 'fulfilled' && !catSnap.value.empty) {
-          const list: Category[] = [];
-          catSnap.value.forEach(d => list.push(d.data() as Category));
-          if (list.length > 0) setCategories(list);
+          const firestoreCats: Category[] = [];
+          catSnap.value.forEach(d => {
+            const raw = d.data() as any;
+            const catId = d.id || raw.id;
+            // Match against canonical config
+            const canonical = findCategoryBySlug(raw.slug || catId || raw.name);
+            const canonicalSlug = canonical ? canonical.slug : normalizeCategorySlug(raw.slug || raw.name || catId);
+
+            firestoreCats.push({
+              ...raw,
+              id: catId,
+              name: raw.name || canonical?.name || canonicalSlug,
+              slug: canonicalSlug,
+              hindiName: canonical?.hindiName || raw.hindiName,
+              englishName: canonical?.englishName || raw.englishName,
+              color: raw.color || canonical?.color || '#dc2626',
+              subCategories: raw.subCategories || canonical?.subCategories || [],
+              description: raw.description || canonical?.description,
+              priority: getCategoryPriority(canonical || raw),
+              aliases: Array.from(new Set([
+                ...(canonical?.aliases || []),
+                ...(raw.aliases || []),
+                raw.slug,
+                canonicalSlug
+              ].filter(Boolean)))
+            } as Category);
+          });
+
+          // Merge: ensure all CATEGORIES from config are preserved
+          const existingIds = new Set(firestoreCats.map(c => c.id));
+          const existingSlugs = new Set(firestoreCats.map(c => c.slug.toLowerCase()));
+          
+          const mergedCategories = [...firestoreCats];
+          INITIAL_CATEGORIES.forEach(cfgCat => {
+            if (!existingIds.has(cfgCat.id) && !existingSlugs.has(cfgCat.slug.toLowerCase())) {
+              mergedCategories.push(cfgCat);
+            }
+          });
+
+          if (mergedCategories.length > 0) {
+            setCategories(sortCategoriesByPriority(mergedCategories));
+          }
         }
 
         if (repSnap.status === 'fulfilled' && !repSnap.value.empty) {
@@ -956,7 +1016,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
     const id = `c${Date.now()}`;
     const slug = category.slug ? createSlug(category.slug) : createSlug(category.name);
     const newCat = { ...category, id, slug };
-    setCategories(prev => [...prev, newCat]);
+    setCategories(prev => sortCategoriesByPriority([...prev, newCat]));
     setDoc(doc(db, "categories", id), sanitizeFirestoreData(newCat)).catch(err => {
       console.error("Error adding category to Firestore:", err);
     });
@@ -1151,11 +1211,22 @@ export function NewsProvider({ children }: { children: ReactNode }) {
       await deleteDoc(doc(db, "live_updates", id));
       // Delete associated image from Cloudinary if present to prevent orphaned media files
       if (targetImgPublicId || (targetImgUrl && targetImgUrl.includes('res.cloudinary.com'))) {
-        fetch("/api/live-updates/delete-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ publicId: targetImgPublicId, imageUrl: targetImgUrl })
-        }).catch(e => console.warn("Failed to trigger live update image cleanup:", e));
+        (async () => {
+          try {
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (auth.currentUser) {
+              const idToken = await auth.currentUser.getIdToken();
+              if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+            }
+            await fetch("/api/live-updates/delete-image", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ publicId: targetImgPublicId, imageUrl: targetImgUrl })
+            });
+          } catch (e) {
+            console.warn("Failed to trigger live update image cleanup:", e);
+          }
+        })();
       }
     } catch (err) {
       console.error("Error deleting live update from Firestore:", err);
