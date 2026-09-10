@@ -371,11 +371,16 @@ export function AboutUs() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl space-y-2 border border-zinc-200 dark:border-zinc-700/50">
             <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold text-sm">
-              <Mail className="h-4 w-4" /> Official Editorial Email
+              <Mail className="h-4 w-4" /> Official Editorial Emails
             </div>
-            <p className="text-xs font-bold text-zinc-900 dark:text-white truncate">
-              {email || "damohdailynewsnetwork@gmail.com"}
-            </p>
+            <div className="space-y-1">
+              <a href="mailto:contactddnn@gmail.com" className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline block truncate">
+                contactddnn@gmail.com
+              </a>
+              <a href={`mailto:${email || "damohdailynewsnetwork@gmail.com"}`} className="text-xs font-bold text-zinc-900 dark:text-white hover:underline block truncate">
+                {email || "damohdailynewsnetwork@gmail.com"}
+              </a>
+            </div>
             <p className="text-[11px] text-zinc-500">For press releases, corrections & official correspondence</p>
           </div>
 
@@ -399,11 +404,18 @@ export function AboutUs() {
             Send News Tip &amp; Message Online &rarr;
           </Link>
           <a
+            href="mailto:contactddnn@gmail.com"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-800 dark:text-zinc-200 text-xs sm:text-sm font-bold rounded-xl transition-all"
+          >
+            <Mail className="h-4 w-4" />
+            contactddnn@gmail.com
+          </a>
+          <a
             href={`mailto:${email || "damohdailynewsnetwork@gmail.com"}`}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 text-zinc-800 dark:text-zinc-200 text-xs sm:text-sm font-bold rounded-xl transition-all"
           >
             <Mail className="h-4 w-4" />
-            Email Newsroom
+            {email || "damohdailynewsnetwork@gmail.com"}
           </a>
         </div>
       </section>

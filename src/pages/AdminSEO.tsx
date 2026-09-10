@@ -100,7 +100,7 @@ export function AdminSEO() {
               <Input 
                 value={form.googleAnalyticsId}
                 onChange={e => setForm(prev => ({ ...prev, googleAnalyticsId: e.target.value }))}
-                placeholder="G-XXXXXXXXXX" 
+                placeholder="G-MFRRWG5TYX" 
               />
             </div>
 

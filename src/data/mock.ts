@@ -409,7 +409,7 @@ export const MOCK_ADS: AdSettings = {
 export const MOCK_SITE_SETTINGS: SiteSettings = {
   siteName: 'Damoh Daily News Network',
   tagline: 'दमोह एवं मध्य प्रदेश की निष्पक्ष व सटीक खबरें',
-  logoUrl: '/logo.svg',
+  logoUrl: '/logo.png',
   faviconUrl: '/favicon-v2.png',
   contactEmail: 'damohdailynewsnetwork@gmail.com',
   contactPhone: '',
@@ -420,7 +420,7 @@ export const MOCK_SITE_SETTINGS: SiteSettings = {
   youtubeUrl: '',
   telegramUrl: '',
   whatsappNumber: '',
-  googleAnalyticsId: '',
+  googleAnalyticsId: 'G-MFRRWG5TYX',
   searchConsoleMeta: ''
 };
 

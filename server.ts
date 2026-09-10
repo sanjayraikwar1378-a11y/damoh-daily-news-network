@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import app from "./api/index";
@@ -20,6 +21,10 @@ async function startServer() {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
+      const templatePath = path.join(distPath, 'app.html');
+      if (fs.existsSync(templatePath)) {
+        return res.sendFile(templatePath);
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

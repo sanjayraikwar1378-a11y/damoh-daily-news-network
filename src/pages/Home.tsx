@@ -90,7 +90,15 @@ export function Home() {
       <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 max-w-7xl space-y-8">
         <div className="h-10 bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse" />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
-          <div className="lg:col-span-8 aspect-[16/10] bg-zinc-200 dark:bg-zinc-800 rounded-2xl animate-pulse" />
+          <div className="lg:col-span-8 space-y-4">
+            <div className="flex items-center justify-between border-b-2 border-red-600 pb-2">
+              <h1 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0"></span>
+                <span>दमोह और मध्य प्रदेश की ताजा खबरें | Damoh Daily News Network</span>
+              </h1>
+            </div>
+            <div className="aspect-[16/10] bg-zinc-200 dark:bg-zinc-800 rounded-2xl animate-pulse" />
+          </div>
           <div className="lg:col-span-4 space-y-4">
             <div className="h-8 w-40 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-2" />
             {[1, 2, 3, 4].map(n => (
@@ -123,11 +131,14 @@ export function Home() {
   // State C (Empty): Initial Firestore sync has fully finished, no error occurred, and database returned 0 articles
   if (hasArticlesLoaded && !isSyncingFirestore && !firestoreSyncError && publishedArticles.length === 0) {
     return (
-      <div className="container mx-auto px-4 py-20 text-center max-w-md space-y-4">
+      <div className="container mx-auto px-4 py-20 text-center max-w-xl space-y-4">
+        <h1 className="text-xl sm:text-2xl font-black text-zinc-900 dark:text-white">
+          दमोह और मध्य प्रदेश की ताजा खबरें | Damoh Daily News Network
+        </h1>
         <div className="p-4 bg-zinc-100 dark:bg-zinc-900 rounded-full w-16 h-16 mx-auto flex items-center justify-center text-zinc-400">
           <Flame className="h-8 w-8 text-red-600" />
         </div>
-        <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
+        <h2 className="text-lg font-bold text-zinc-700 dark:text-zinc-300">
           अभी कोई खबर प्रकाशित नहीं हुई है
         </h2>
         <p className="text-sm text-zinc-500">
@@ -150,7 +161,14 @@ export function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
           
           {/* Main Hero Card */}
-          <div className="lg:col-span-8 group">
+          <div className="lg:col-span-8 flex flex-col gap-4 group">
+            <div className="flex items-center justify-between border-b-2 border-red-600 pb-2">
+              <h1 className="text-base sm:text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0"></span>
+                <span>दमोह और मध्य प्रदेश की ताजा खबरें | Damoh Daily News Network</span>
+              </h1>
+            </div>
+
             <PrefetchLink to={`/article/${heroArticle.slug}`} articleSlug={heroArticle.slug} articleImageUrl={heroArticle.imageUrl} className="block relative rounded-2xl overflow-hidden shadow-lg aspect-[16/10] sm:aspect-[16/9] lg:aspect-[16/10] bg-zinc-900">
               <ResponsiveImage 
                 src={heroArticle.imageUrl} 
@@ -178,9 +196,9 @@ export function Home() {
                     <Clock className="h-3 w-3" /> {formatDateSafe(heroArticle.publishedAt)}
                   </span>
                 </div>
-                <h1 className="text-lg sm:text-2xl md:text-4xl font-black text-white leading-snug sm:leading-tight mb-1 sm:mb-3 group-hover:text-red-400 transition-colors line-clamp-3 sm:line-clamp-none">
+                <h2 className="text-lg sm:text-2xl md:text-4xl font-black text-white leading-snug sm:leading-tight mb-1 sm:mb-3 group-hover:text-red-400 transition-colors line-clamp-3 sm:line-clamp-none">
                   {heroArticle.title}
-                </h1>
+                </h2>
                 <p className="text-zinc-300 text-xs sm:text-sm md:text-base line-clamp-2 hidden sm:block font-medium">
                   {heroArticle.excerpt}
                 </p>
@@ -240,7 +258,7 @@ export function Home() {
 
       {/* Editor's Pick Banner Section */}
       {editorsPick.length > 0 && (
-        <LazySection minHeight="280px">
+        <LazySection id="home-editors-pick" minHeight="280px">
           <section className="bg-gradient-to-r from-zinc-900 via-zinc-950 to-zinc-900 text-white rounded-2xl p-6 md:p-8 space-y-6">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
               <h2 className="text-xl font-black flex items-center gap-2 text-white">
@@ -277,7 +295,7 @@ export function Home() {
 
       {/* Latest News (लेटेस्ट न्यूज़) Dedicated Section */}
       {publishedArticles.length > 0 && (
-        <LazySection minHeight="380px">
+        <LazySection id="home-latest-news" minHeight="380px">
           <section className="bg-card border border-border rounded-2xl p-4 sm:p-6 md:p-8 space-y-6 shadow-sm">
             {/* Section Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-red-600 pb-3">
@@ -459,7 +477,7 @@ export function Home() {
           </section>
 
           {/* Politics & Crime Split Sections */}
-          <LazySection minHeight="240px">
+          <LazySection id="home-politics-crime" minHeight="240px">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
               
               {/* Politics */}
@@ -505,7 +523,7 @@ export function Home() {
 
           {/* Other Categories Sections */}
           {otherCategorySections.map(({ category, articles: catArticles }) => (
-            <LazySection key={category.id} minHeight="240px">
+            <LazySection key={category.id} id={`home-category-${category.id}`} minHeight="240px">
               <section className="space-y-4">
                 <CategoryHeader
                   title={category.name}
@@ -555,7 +573,7 @@ export function Home() {
 
         {/* Sidebar Widgets: Most Viewed + Market Rates + Weather */}
         <div className="lg:col-span-4 space-y-8">
-          <LazySection minHeight="300px">
+          <LazySection id="home-sidebar-widgets" minHeight="300px">
             <div className="space-y-8">
               {/* Most Read Widget */}
               <div className="border rounded-2xl p-5 bg-card space-y-4 shadow-sm">
@@ -637,7 +655,7 @@ export function Home() {
       </div>
 
       {/* Video News & Ground Report Gallery Section */}
-      <LazySection minHeight="280px">
+      <LazySection id="home-video-news" minHeight="280px">
         <section className="bg-zinc-900 text-white rounded-2xl p-6 md:p-8 space-y-6">
           <CategoryHeader
             title="वीडियो बुलेटिन व ग्राउंड रिपोर्ट (Video News)"
@@ -670,7 +688,7 @@ export function Home() {
       </LazySection>
 
       {/* Photo Gallery Grid */}
-      <LazySection minHeight="200px">
+      <LazySection id="home-photo-gallery" minHeight="200px">
         <section className="space-y-4">
           <CategoryHeader
             title="फोटो गैलरी (Photo Gallery)"
@@ -704,7 +722,7 @@ export function Home() {
       </LazySection>
 
       {/* Editorial Contact & News Tip Banner */}
-      <LazySection minHeight="200px">
+      <LazySection id="home-news-tip-banner" minHeight="200px">
         <section className="bg-gradient-to-r from-red-600 via-red-700 to-red-900 text-white rounded-2xl p-6 md:p-8 shadow-md space-y-6">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-red-500/40 pb-6">
             <div className="space-y-2 text-center md:text-left">
@@ -739,18 +757,18 @@ export function Home() {
 
           {/* Live Contact Quick Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-            <a 
-              href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} 
-              className="p-3 bg-white/10 hover:bg-white/20 rounded-xl border border-white/20 flex items-center gap-3 transition-colors"
+            <div 
+              className="p-3 bg-white/10 rounded-xl border border-white/20 flex items-start gap-3 transition-colors"
             >
-              <div className="p-2 bg-white/20 rounded-lg shrink-0">
+              <div className="p-2 bg-white/20 rounded-lg shrink-0 mt-0.5">
                 <Mail className="h-4 w-4 text-white" />
               </div>
-              <div className="min-w-0">
-                <span className="text-[10px] text-red-200 uppercase font-bold block">आधिकारिक ईमेल (Email)</span>
-                <strong className="text-xs font-bold text-white truncate block">{siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}</strong>
+              <div className="min-w-0 space-y-0.5">
+                <span className="text-[10px] text-red-200 uppercase font-bold block">आधिकारिक ईमेल (Emails)</span>
+                <a href="mailto:contactddnn@gmail.com" className="text-xs font-bold text-white hover:underline truncate block">contactddnn@gmail.com</a>
+                <a href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} className="text-xs font-bold text-red-100 hover:underline truncate block">{siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}</a>
               </div>
-            </a>
+            </div>
 
             <div className="p-3 bg-white/10 rounded-xl border border-white/20 flex items-center gap-3">
               <div className="p-2 bg-white/20 rounded-lg shrink-0">

@@ -455,7 +455,7 @@ function findCategoryBySlug(rawSlug: string | undefined | null): CategoryItem | 
   }) || null;
 }
 
-const DEFAULT_SHARE_IMAGE = "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1200&h=630&fit=crop";
+const DEFAULT_SHARE_IMAGE = "https://www.damohdailynewsnetwork.in/social-preview.jpg";
 
 const MOCK_ARTICLES_FALLBACK: Array<Record<string, any>> = [
   {
@@ -574,6 +574,9 @@ const SERVER_CACHE_TTL = 3 * 60 * 1000; // 3 minutes fallback TTL
 let feedArticlesCache: { data: Array<Record<string, any>>; timestamp: number } | null = null;
 const FEED_CACHE_TTL = 30 * 1000; // 30 seconds fallback TTL for rapid indexing freshness
 
+const categorySsrCache = new Map<string, { html: string; timestamp: number; baseUrl: string }>();
+const CATEGORY_SSR_CACHE_TTL = 30 * 1000; // 30 seconds category SSR cache
+
 let lastPurgeTime = 0;
 const PURGE_THROTTLE_MS = 3000; // Minimum 3s between actual cache wipes to prevent thrashing
 
@@ -587,6 +590,7 @@ function invalidateFeedArticlesCache(): boolean {
   feedArticlesCache = null;
   homepageSsrCache = null;
   serverArticleCache.clear();
+  categorySsrCache.clear();
   return true;
 }
 
@@ -600,43 +604,79 @@ async function getAllArticlesForFeed(forceRefresh = false): Promise<Array<Record
 
   try {
     const articles: Array<Record<string, any>> = [];
-    let pageToken = "";
-    let hasMore = true;
-    let iterations = 0;
-    const maxIterations = 20; // Allows up to 6,000 documents across Firestore pages without memory bottleneck
 
-    while (hasMore && iterations < maxIterations) {
-      iterations++;
-      let listUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles?pageSize=300`;
-      if (pageToken) {
-        listUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
-      }
-
-      const response = await fetch(listUrl, { signal: AbortSignal.timeout(8000) });
-
-      if (!response.ok) {
-        break;
-      }
-
-      const data = await response.json();
-      const docs = data.documents || [];
-
-      for (const doc of docs) {
-        if (!doc || !doc.fields) continue;
-        const parsed = parseFirestoreFields(doc.fields);
-        const nameParts = (doc.name || "").split("/");
-        const docId = nameParts[nameParts.length - 1];
-        if (!parsed.id && docId) parsed.id = docId;
-
-        if (parsed.title || parsed.slug) {
-          articles.push(parsed);
+    // Fast path: Single POST to :runQuery to fetch all documents in 1 network request
+    try {
+      const runQueryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+      const queryBody = {
+        structuredQuery: {
+          from: [{ collectionId: "articles" }],
+          limit: 500
+        }
+      };
+      const qRes = await fetch(runQueryUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(queryBody),
+        signal: AbortSignal.timeout(6000)
+      });
+      if (qRes.ok) {
+        const qData = await qRes.json();
+        if (Array.isArray(qData)) {
+          for (const item of qData) {
+            const doc = item?.document;
+            if (!doc || !doc.fields) continue;
+            const parsed = parseFirestoreFields(doc.fields);
+            const nameParts = (doc.name || "").split("/");
+            const docId = nameParts[nameParts.length - 1];
+            if (!parsed.id && docId) parsed.id = docId;
+            if (parsed.title || parsed.slug) {
+              articles.push(parsed);
+            }
+          }
         }
       }
+    } catch (qErr) {
+      console.warn("Fast runQuery notice, falling back to paginated list:", qErr);
+    }
 
-      if (data.nextPageToken) {
-        pageToken = data.nextPageToken;
-      } else {
-        hasMore = false;
+    // Fallback: If runQuery returned no articles, use paginated list
+    if (articles.length === 0) {
+      let pageToken = "";
+      let hasMore = true;
+      let iterations = 0;
+      const maxIterations = 20;
+
+      while (hasMore && iterations < maxIterations) {
+        iterations++;
+        let listUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/articles?pageSize=300`;
+        if (pageToken) {
+          listUrl += `&pageToken=${encodeURIComponent(pageToken)}`;
+        }
+
+        const response = await fetch(listUrl, { signal: AbortSignal.timeout(8000) });
+        if (!response.ok) break;
+
+        const data = await response.json();
+        const docs = data.documents || [];
+
+        for (const doc of docs) {
+          if (!doc || !doc.fields) continue;
+          const parsed = parseFirestoreFields(doc.fields);
+          const nameParts = (doc.name || "").split("/");
+          const docId = nameParts[nameParts.length - 1];
+          if (!parsed.id && docId) parsed.id = docId;
+
+          if (parsed.title || parsed.slug) {
+            articles.push(parsed);
+          }
+        }
+
+        if (data.nextPageToken) {
+          pageToken = data.nextPageToken;
+        } else {
+          hasMore = false;
+        }
       }
     }
 
@@ -797,6 +837,25 @@ async function getDefaultShareImageBuffer(): Promise<Buffer> {
     return defaultShareImageBuffer;
   }
 
+  // 1. Check if dedicated social-preview.jpg exists in public/ or dist/
+  const candidatePaths = [
+    path.resolve(process.cwd(), "public", "social-preview.jpg"),
+    path.resolve(process.cwd(), "dist", "social-preview.jpg"),
+    path.resolve(process.cwd(), "social-preview.jpg")
+  ];
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        defaultShareImageBuffer = fs.readFileSync(p);
+        if (defaultShareImageBuffer.length > 0) {
+          return defaultShareImageBuffer;
+        }
+      } catch {}
+    }
+  }
+
+  // 2. Fallback: render 1200x630 JPEG from logo with high contrast dark backdrop
   const logoPath = path.resolve(process.cwd(), "public", "logo.png");
   if (fs.existsSync(logoPath)) {
     try {
@@ -807,7 +866,7 @@ async function getDefaultShareImageBuffer(): Promise<Buffer> {
           .rotate()
           .resize(1200, 630, {
             fit: 'contain',
-            background: { r: 24, g: 24, b: 27, alpha: 1 }
+            background: { r: 10, g: 10, b: 10, alpha: 1 }
           })
           .jpeg({ quality: 90, mozjpeg: true })
           .toBuffer();
@@ -842,19 +901,38 @@ async function createResizedImageBuffer(inputBuffer: Buffer, _targetMime: 'image
     // Preserve the complete original image in its natural aspect ratio
     // Auto-rotate for EXIF orientation, constrain max dimension to 1200px without enlargement,
     // and encode as a high-quality clean progressive JPEG.
+    // Ensure file size is safely under 280KB for WhatsApp link preview crawler compatibility (< 300KB limit).
     // Strictly NO blurred background, NO duplicate image, NO artificial cropping.
-    return await sharp(inputBuffer)
+    let out = await sharp(inputBuffer)
       .rotate()
       .resize(1200, 1200, {
         fit: 'inside',
         withoutEnlargement: true
       })
       .jpeg({
-        quality: 88,
+        quality: 80,
         mozjpeg: true,
         progressive: true
       })
       .toBuffer();
+
+    // If still > 280KB, re-encode with slightly reduced quality to strictly maintain WhatsApp crawler compatibility
+    if (out.length > 280000) {
+      out = await sharp(inputBuffer)
+        .rotate()
+        .resize(1200, 1200, {
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({
+          quality: 72,
+          mozjpeg: true,
+          progressive: true
+        })
+        .toBuffer();
+    }
+
+    return out;
   } catch (err) {
     console.warn("sharp image processing warning, returning raw buffer:", err);
     return inputBuffer;
@@ -863,16 +941,18 @@ async function createResizedImageBuffer(inputBuffer: Buffer, _targetMime: 'image
 
 function getArticleImageUrl(article: Record<string, any> | null, slug: string, baseUrl: string): string {
   if (!article) {
-    return `${baseUrl}/logo.png`;
+    return `${baseUrl}/social-preview.jpg`;
   }
 
   // Use the REAL article image whenever available for lightning-fast, zero-timeout WhatsApp & social previews
   const rawImg = (article.imageUrl || article.image || article.featuredImage || article.thumbnailUrl || "").trim();
   if (rawImg && !rawImg.startsWith("data:")) {
     if (rawImg.startsWith("http://") || rawImg.startsWith("https://")) {
-      // If Cloudinary URL, ensure it is optimized for Open Graph 1200x630 JPEG
+      // If Cloudinary URL, ensure it is optimized for Open Graph 1200x630 JPEG without stripping path segments or folders
       if (rawImg.includes("res.cloudinary.com") && rawImg.includes("/upload/")) {
-        return rawImg.replace(/\/upload\/(?:[^\/]+\/)?/, "/upload/c_fill,w_1200,h_630,q_auto,f_jpg/");
+        if (!rawImg.includes("/c_fill,w_1200,h_630")) {
+          return rawImg.replace(/\/upload\/(?:c_[^\/]+\/)?/, "/upload/c_fill,w_1200,h_630,g_auto,q_auto:good,f_jpg/");
+        }
       }
       return rawImg;
     }
@@ -1263,6 +1343,8 @@ async function generateRssFeedXml(baseUrl: string): Promise<string> {
 
 function getHtmlTemplate(): string {
   const possiblePaths = [
+    path.join(process.cwd(), "dist", "app.html"),
+    path.resolve(process.cwd(), "dist", "app.html"),
     path.join(process.cwd(), "dist", "index.html"),
     path.join(process.cwd(), "index.html"),
     path.resolve(process.cwd(), "dist", "index.html"),
@@ -1519,10 +1601,63 @@ function injectDefaultMetaTags(html: string, fullUrl: string, baseUrl: string): 
     .replace(/<meta\s+name=["']twitter:[\s\S]*?["'][\s\S]*?>/gi, '')
     .replace(/<link\s+rel=["']canonical["'][\s\S]*?>/gi, '');
 
+  const fallbackBody = `<div id="root">
+    <div class="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col font-sans text-zinc-900 dark:text-zinc-50">
+      <main class="flex-1">
+        <div class="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 max-w-7xl">
+          <div class="border-b-2 border-red-600 pb-2 mb-4">
+            <h1 class="text-base sm:text-lg font-black text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-600"></span>
+              <span>दमोह और मध्य प्रदेश की ताजा खबरें | Damoh Daily News Network</span>
+            </h1>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>`;
+
+  if (cleanHtml.includes('<div id="root"></div>')) {
+    cleanHtml = cleanHtml.replace('<div id="root"></div>', fallbackBody);
+  }
+
   if (cleanHtml.includes('<head>')) {
     return cleanHtml.replace('<head>', `<head>\n${metaTagsHtml}`);
   }
   return cleanHtml.replace('</head>', `${metaTagsHtml}\n</head>`);
+}
+
+function filterArticlesForCategory(
+  articles: Array<Record<string, any>>,
+  category: CategoryItem
+): Array<Record<string, any>> {
+  const catId = category.id;
+  const catSlug = category.slug;
+  const aliases = category.aliases || [];
+
+  return articles.filter(a => {
+    if ((a.status || 'published') !== 'published') return false;
+    if (a.categoryIds && Array.isArray(a.categoryIds)) {
+      if (a.categoryIds.includes(catId) || a.categoryIds.includes(catSlug)) return true;
+      if (aliases.some((alias: string) => a.categoryIds.includes(alias))) return true;
+    }
+    if (a.category === catId || a.category === catSlug || a.category === category.name) return true;
+    if (a.categorySlug && (a.categorySlug === catSlug || a.categorySlug === catId)) return true;
+    return false;
+  }).sort((a, b) => {
+    const tA = new Date(a.publishedAt || a.createdAt || 0).getTime();
+    const tB = new Date(b.publishedAt || b.createdAt || 0).getTime();
+    return tB - tA;
+  });
+}
+
+async function getCategoryArticlesForSsr(category: CategoryItem): Promise<Array<Record<string, any>>> {
+  try {
+    const allArticles = await getAllArticlesForFeed();
+    return filterArticlesForCategory(allArticles, category);
+  } catch (err) {
+    console.warn("Notice fetching category SSR articles:", err);
+    return [];
+  }
 }
 
 function injectCategoryMetaTags(
@@ -1530,14 +1665,29 @@ function injectCategoryMetaTags(
   category: CategoryItem,
   fullUrl: string,
   baseUrl: string,
-  _requestedSlug: string
+  _requestedSlug: string,
+  categoryArticles: Array<Record<string, any>> = []
 ): string {
   const cleanTitle = escapeHtml(`${category.name} | ताज़ा ख़बरें और लाइव अपडेट्स - Damoh Daily News Network`);
-  const rawDesc = category.description || `${category.name} की सभी ताज़ा, सटीक और बड़ी ख़बरें - Damoh Daily News Network.`;
+  const articleCountText = categoryArticles.length > 0 
+    ? `${categoryArticles.length} ${categoryArticles.length === 1 ? 'खबर' : 'खबरें'} (Articles)`
+    : "0 खबरें (Articles)";
+  const rawDesc = category.description || `${category.name} की सभी ताज़ा, सटीक और बड़ी ख़बरें (${articleCountText}) - Damoh Daily News Network.`;
   const description = escapeHtml(rawDesc.slice(0, 200));
 
   const canonicalUrl = `${baseUrl}/category/${category.slug}`;
-  const defaultShareImage = DEFAULT_SHARE_IMAGE;
+  
+  // Pick high-resolution category preview image: first article with a valid photo or fallback to official branding preview
+  let shareImageUrl = `${baseUrl}/social-preview.jpg`;
+  if (categoryArticles.length > 0) {
+    for (const art of categoryArticles) {
+      const artImg = getArticleImageUrl(art, art.slug || art.id, baseUrl);
+      if (artImg && !artImg.endsWith("social-preview.jpg") && !artImg.endsWith("logo.png")) {
+        shareImageUrl = artImg;
+        break;
+      }
+    }
+  }
 
   const jsonLdCollectionPage = {
     "@context": "https://schema.org",
@@ -1556,9 +1706,9 @@ function injectCategoryMetaTags(
       "url": baseUrl,
       "logo": {
         "@type": "ImageObject",
-        "url": `${baseUrl}/logo.png`,
-        "width": 1024,
-        "height": 512
+        "url": `${baseUrl}/social-preview.jpg`,
+        "width": 1200,
+        "height": 630
       }
     }
   };
@@ -1582,6 +1732,20 @@ function injectCategoryMetaTags(
     ]
   };
 
+  const jsonLdItemList = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "name": `${category.name} समाचार - Damoh Daily News Network`,
+    "numberOfItems": categoryArticles.length,
+    "itemListElement": categoryArticles.slice(0, 30).map((art, idx) => ({
+      "@type": "ListItem",
+      "position": idx + 1,
+      "url": `${baseUrl}/article/${encodeURIComponent(art.slug || art.id)}`,
+      "name": art.title || "Damoh Daily News",
+      "image": getArticleImageUrl(art, art.slug || art.id, baseUrl)
+    }))
+  };
+
   const metaTagsHtml = `
     <!-- Essential Meta Tags -->
     <title>${cleanTitle}</title>
@@ -1593,8 +1757,8 @@ function injectCategoryMetaTags(
     <meta property="og:site_name" content="Damoh Daily News Network">
     <meta property="og:title" content="${cleanTitle}">
     <meta property="og:description" content="${description}">
-    <meta property="og:image" content="${defaultShareImage}">
-    <meta property="og:image:secure_url" content="${defaultShareImage}">
+    <meta property="og:image" content="${shareImageUrl}">
+    <meta property="og:image:secure_url" content="${shareImageUrl}">
     <meta property="og:image:type" content="image/jpeg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -1608,20 +1772,46 @@ function injectCategoryMetaTags(
     <meta name="twitter:creator" content="@DamohDailyNews">
     <meta name="twitter:title" content="${cleanTitle}">
     <meta name="twitter:description" content="${description}">
-    <meta name="twitter:image" content="${defaultShareImage}">
+    <meta name="twitter:image" content="${shareImageUrl}">
     <meta name="twitter:image:alt" content="${cleanTitle}">
 
     <!-- Schema.org JSON-LD -->
     <script type="application/ld+json">${JSON.stringify(jsonLdCollectionPage)}</script>
     <script type="application/ld+json">${JSON.stringify(jsonLdBreadcrumbs)}</script>
+    <script type="application/ld+json">${JSON.stringify(jsonLdItemList)}</script>
 
-    <!-- Initial Category Data for Client Hydration -->
+    <!-- Initial Category Data & Articles for Instant Client Hydration -->
     <script id="__INITIAL_CATEGORY__" type="application/json">${JSON.stringify(category).replace(/</g, '\\u003c')}</script>
+    <script id="__INITIAL_CATEGORY_ARTICLES__" type="application/json">${JSON.stringify(categoryArticles.slice(0, 30).map(art => ({
+      id: art.id,
+      slug: art.slug,
+      title: art.title,
+      excerpt: art.excerpt || (art.content ? stripTags(art.content).slice(0, 200) : ""),
+      imageUrl: getArticleImageUrl(art, art.slug || art.id, baseUrl),
+      categoryIds: art.categoryIds || [],
+      authorName: art.authorName || "दमोह डेली न्यूज़",
+      publishedAt: art.publishedAt || art.createdAt || "",
+      createdAt: art.createdAt || "",
+      status: art.status || "published",
+      views: typeof art.views === 'number' ? art.views : 0,
+      likes: typeof art.likes === 'number' ? art.likes : 0,
+      isBreaking: Boolean(art.isBreaking),
+      isTrending: Boolean(art.isTrending),
+      isEditorsPick: Boolean(art.isEditorsPick),
+      videoUrl: art.videoUrl || undefined,
+      galleryImages: Array.isArray(art.galleryImages)
+        ? art.galleryImages.filter((img: any) => typeof img === 'string' && !img.startsWith('data:')).slice(0, 4)
+        : undefined
+    }))).replace(/</g, '\\u003c')}</script>
     <script>
       try {
         var rawCatEl = document.getElementById('__INITIAL_CATEGORY__');
         if (rawCatEl && rawCatEl.textContent) {
           window.__INITIAL_CATEGORY__ = JSON.parse(rawCatEl.textContent);
+        }
+        var rawCatArtEl = document.getElementById('__INITIAL_CATEGORY_ARTICLES__');
+        if (rawCatArtEl && rawCatArtEl.textContent) {
+          window.__INITIAL_CATEGORY_ARTICLES__ = JSON.parse(rawCatArtEl.textContent);
         }
       } catch(e) {}
     </script>
@@ -1634,6 +1824,86 @@ function injectCategoryMetaTags(
     .replace(/<meta\s+property=["']article:[\s\S]*?["'][\s\S]*?>/gi, '')
     .replace(/<meta\s+name=["']twitter:[\s\S]*?["'][\s\S]*?>/gi, '')
     .replace(/<link\s+rel=["']canonical["'][\s\S]*?>/gi, '');
+
+  // Render initial SSR Body content for search engines (Googlebot, Bingbot)
+  let categoryBodyContent = "";
+  if (categoryArticles.length > 0) {
+    const cardsHtml = categoryArticles.slice(0, 30).map((art, idx) => {
+      const artSlug = encodeURIComponent(art.slug || art.id || "");
+      const artImg = getArticleImageUrl(art, art.slug || art.id, baseUrl);
+      const excerpt = escapeHtml(art.excerpt || (art.content ? stripTags(art.content).slice(0, 160) : ""));
+      const title = escapeHtml(art.title || "Damoh News");
+      const pubDate = escapeHtml(art.publishedAt ? art.publishedAt.slice(0, 10) : "ताज़ा खबर");
+
+      return `
+        <article class="border border-border/60 rounded-2xl p-3 bg-card hover:shadow-lg transition-all">
+          <a href="${baseUrl}/article/${artSlug}" class="group flex flex-col gap-3">
+            <div class="relative aspect-video rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800">
+              <img src="${artImg}" alt="${title}" width="480" height="270" loading="${idx < 3 ? 'eager' : 'lazy'}" class="w-full h-full object-cover object-center" />
+            </div>
+            <div class="space-y-1.5 flex-1 flex flex-col">
+              <h2 class="font-bold text-base sm:text-lg leading-snug group-hover:text-red-600 transition-colors line-clamp-2 text-zinc-900 dark:text-white">
+                ${title}
+              </h2>
+              <p class="text-zinc-500 text-xs sm:text-sm line-clamp-2 leading-relaxed">
+                ${excerpt}
+              </p>
+              <div class="text-[11px] text-zinc-400 mt-auto pt-2 flex items-center gap-1 border-t border-border/50">
+                <span>${pubDate}</span>
+              </div>
+            </div>
+          </a>
+        </article>
+      `;
+    }).join("\n");
+
+    categoryBodyContent = `
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        ${cardsHtml}
+      </div>
+    `;
+  } else {
+    categoryBodyContent = `
+      <div class="text-center py-16 bg-card border border-border rounded-2xl p-8 max-w-md mx-auto space-y-3">
+        <h2 class="text-base font-bold text-zinc-900 dark:text-white">
+          इस श्रेणी में अभी कोई खबर उपलब्ध नहीं है।
+        </h2>
+        <p class="text-xs text-zinc-500">
+          दमोह और आस-पास के क्षेत्रों से नई खबरें जल्द ही इस श्रेणी में जोड़ी जाएंगी।
+        </p>
+        <a href="${baseUrl}/" class="inline-flex items-center justify-center px-4 py-2 text-xs font-bold rounded-lg border border-border hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-900 dark:text-white transition-colors">
+          मुख्य पृष्ठ देखें (Home)
+        </a>
+      </div>
+    `;
+  }
+
+  const categorySsrShell = `
+    <div id="root">
+      <div class="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col font-sans text-zinc-900 dark:text-zinc-50">
+        <main class="flex-1">
+          <div class="container mx-auto px-4 py-8 max-w-7xl space-y-8">
+            <div class="border-b-2 border-red-600 pb-4 flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+              <div>
+                <h1 class="text-2xl sm:text-3xl font-black tracking-tight text-zinc-900 dark:text-white flex items-center gap-2.5">
+                  <span class="w-3.5 h-3.5 rounded-full bg-red-600 inline-block shrink-0"></span>
+                  <span>${escapeHtml(category.name)}</span>
+                </h1>
+                <p class="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1 font-medium">
+                  ${categoryArticles.length} ${categoryArticles.length === 1 ? 'खबर' : 'खबरें'} (Articles)
+                </p>
+              </div>
+            </div>
+            ${categoryBodyContent}
+          </div>
+        </main>
+      </div>
+    </div>
+  `;
+
+  if (cleanHtml.includes('<div id="root"></div>')) {
+    cleanHtml = cleanHtml.replace('<div id="root"></div>', categorySsrShell);
+  }
 
   if (cleanHtml.includes('<head>')) {
     return cleanHtml.replace('<head>', `<head>\n${metaTagsHtml}`);
@@ -1733,7 +2003,13 @@ function injectHomepageMetaTagsAndBody(
     const heroDate = (heroArticle.publishedAt || heroArticle.createdAt || "").slice(0, 10);
 
     heroArticleHtml = `
-      <div class="lg:col-span-8 group">
+      <div class="lg:col-span-8 flex flex-col gap-3 sm:gap-4 group">
+        <div class="flex items-center justify-between pb-2 border-b-2 border-red-600">
+          <h1 class="text-base sm:text-lg font-black text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0"></span>
+            <span>दमोह और मध्य प्रदेश की ताजा खबरें | Damoh Daily News Network</span>
+          </h1>
+        </div>
         <a href="${heroUrl}" class="block relative rounded-2xl overflow-hidden shadow-lg aspect-[16/10] sm:aspect-[16/9] lg:aspect-[16/10] bg-zinc-900">
           ${heroImg ? `
             <img src="${heroImg}" alt="${escapeHtml(heroArticle.title)}" class="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105 opacity-90" width="800" height="500" loading="eager" fetchpriority="high" />
@@ -1745,12 +2021,23 @@ function injectHomepageMetaTagsAndBody(
               </span>
               <span class="text-zinc-300 text-[11px] sm:text-xs">${heroDate}</span>
             </div>
-            <h1 class="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-white leading-tight mb-2 group-hover:text-red-100 transition-colors">
+            <h2 class="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-extrabold text-white leading-tight mb-2 group-hover:text-red-100 transition-colors">
               ${escapeHtml(heroArticle.title)}
-            </h1>
+            </h2>
             ${heroExcerpt ? `<p class="text-xs sm:text-sm md:text-base text-zinc-300 line-clamp-2 sm:line-clamp-3">${escapeHtml(heroExcerpt)}</p>` : ''}
           </div>
         </a>
+      </div>
+    `;
+  } else {
+    heroArticleHtml = `
+      <div class="lg:col-span-8 flex flex-col gap-3 sm:gap-4">
+        <div class="flex items-center justify-between pb-2 border-b-2 border-red-600">
+          <h1 class="text-base sm:text-lg font-black text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0"></span>
+            <span>दमोह और मध्य प्रदेश की ताजा खबरें | Damoh Daily News Network</span>
+          </h1>
+        </div>
       </div>
     `;
   }
@@ -2010,7 +2297,8 @@ async function generateHomepageSsrHtml(baseUrl: string, forceRefresh = false): P
 function isCrawlerRequest(req: express.Request): boolean {
   const ua = (req.headers["user-agent"] || "").toLowerCase();
   const botKeywords = [
-    "googlebot", "bingbot", "yandex", "baiduspider", "duckduckbot",
+    "googlebot", "bingbot", "bingpreview", "msnbot", "adidxbot", "bing",
+    "yandex", "baiduspider", "duckduckbot",
     "slurp", "twitterbot", "facebookexternalhit", "facebot", "whatsapp",
     "telegrambot", "pinterest", "linkedinbot", "embedly", "quora link preview",
     "rogerbot", "screaming frog", "crawl", "spider", "bot", "curl", "wget"
@@ -3084,8 +3372,20 @@ export function createExpressApp() {
       }
 
       const fullUrl = `${baseUrl}/category/${category.slug}`;
+      const cacheKey = `${baseUrl}:${category.slug}`;
+      const cached = categorySsrCache.get(cacheKey);
+      const now = Date.now();
+      if (cached && (now - cached.timestamp < CATEGORY_SSR_CACHE_TTL)) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");
+        return res.status(200).send(cached.html);
+      }
+
+      const categoryArticles = await getCategoryArticlesForSsr(category);
       const htmlTemplate = getHtmlTemplate();
-      const finalHtml = injectCategoryMetaTags(htmlTemplate, category, fullUrl, baseUrl, category.slug);
+      const finalHtml = injectCategoryMetaTags(htmlTemplate, category, fullUrl, baseUrl, category.slug, categoryArticles);
+
+      categorySsrCache.set(cacheKey, { html: finalHtml, timestamp: now, baseUrl });
 
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600");

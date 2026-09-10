@@ -142,7 +142,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         return {
           ...MOCK_SITE_SETTINGS,
           ...parsed,
-          logoUrl: parsed.logoUrl && parsed.logoUrl.trim() ? parsed.logoUrl : '/logo.png'
+          logoUrl: parsed.logoUrl && parsed.logoUrl.trim() && parsed.logoUrl.trim() !== '/logo.svg' ? parsed.logoUrl : '/logo.png'
         };
       }
     } catch {}
@@ -410,7 +410,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
           const updated: SiteSettings = {
             ...MOCK_SITE_SETTINGS,
             ...rawSite,
-            logoUrl: rawSite.logoUrl && rawSite.logoUrl.trim() ? rawSite.logoUrl : '/logo.png',
+            logoUrl: rawSite.logoUrl && rawSite.logoUrl.trim() && rawSite.logoUrl.trim() !== '/logo.svg' ? rawSite.logoUrl : '/logo.png',
             contactPhone: "",
             whatsappNumber: ""
           };
@@ -691,7 +691,7 @@ export function NewsProvider({ children }: { children: ReactNode }) {
         const updated: SiteSettings = {
           ...MOCK_SITE_SETTINGS,
           ...rawSite,
-          logoUrl: rawSite.logoUrl && rawSite.logoUrl.trim() ? rawSite.logoUrl : '/logo.png',
+          logoUrl: rawSite.logoUrl && rawSite.logoUrl.trim() && rawSite.logoUrl.trim() !== '/logo.svg' ? rawSite.logoUrl : '/logo.png',
           contactPhone: "",
           whatsappNumber: ""
         };

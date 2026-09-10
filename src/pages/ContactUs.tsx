@@ -57,34 +57,68 @@ export function ContactUs() {
             </p>
           </div>
 
-          {/* Primary Clickable Mailto Card */}
-          <div className="p-6 bg-red-50/70 dark:bg-red-950/30 rounded-xl border border-red-200/80 dark:border-red-900/40 space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-red-600 text-white rounded-xl shadow-md shrink-0">
-                <Mail className="h-6 w-6" />
+          {/* Primary Clickable Mailto Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* New Official Email Card */}
+            <div className="p-5 bg-red-50/70 dark:bg-red-950/30 rounded-xl border border-red-200/80 dark:border-red-900/40 space-y-4 flex flex-col justify-between">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 bg-red-600 text-white rounded-xl shadow-md shrink-0">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div className="space-y-1 min-w-0 flex-1">
+                  <span className="text-[11px] font-bold uppercase text-red-600 dark:text-red-400 tracking-wider block">
+                    आधिकारिक ईमेल (Official Email)
+                  </span>
+                  <a href="mailto:contactddnn@gmail.com" className="text-base sm:text-lg font-extrabold text-zinc-900 dark:text-white break-all hover:underline block">
+                    contactddnn@gmail.com
+                  </a>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    समाचार, सुझाव व मुख्य संपादकीय संवाद
+                  </p>
+                </div>
               </div>
-              <div className="space-y-1 min-w-0 flex-1">
-                <span className="text-xs font-bold uppercase text-red-600 dark:text-red-400 tracking-wider">
-                  Editorial & Official Email
-                </span>
-                <p className="text-lg sm:text-xl font-extrabold text-zinc-900 dark:text-white break-all">
-                  {editorialEmail}
-                </p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  समाचार, प्रेस विज्ञप्ति, सुधार और विज्ञापन पूछताछ
-                </p>
+
+              <div className="pt-1">
+                <a 
+                  href="mailto:contactddnn@gmail.com"
+                  className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-sm transition-all hover:shadow-md text-xs sm:text-sm"
+                >
+                  <Mail className="h-4 w-4" />
+                  <span>ईमेल भेजें (contactddnn@gmail.com)</span>
+                  <ExternalLink className="h-3.5 w-3.5 opacity-80 ml-1" />
+                </a>
               </div>
             </div>
 
-            <div className="pt-2">
-              <a 
-                href={`mailto:${editorialEmail}`}
-                className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-sm transition-all hover:shadow-md text-sm"
-              >
-                <Mail className="h-4 w-4" />
-                <span>ईमेल भेजें (Send Email Now)</span>
-                <ExternalLink className="h-3.5 w-3.5 opacity-80 ml-1" />
-              </a>
+            {/* Existing Editorial Email Card */}
+            <div className="p-5 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200 dark:border-zinc-700/60 space-y-4 flex flex-col justify-between">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 bg-zinc-800 dark:bg-zinc-700 text-white rounded-xl shadow-md shrink-0">
+                  <Mail className="h-5 w-5 text-red-400" />
+                </div>
+                <div className="space-y-1 min-w-0 flex-1">
+                  <span className="text-[11px] font-bold uppercase text-zinc-500 dark:text-zinc-400 tracking-wider block">
+                    संपादकीय डेस्क (Editorial Desk)
+                  </span>
+                  <a href={`mailto:${editorialEmail}`} className="text-base sm:text-lg font-extrabold text-zinc-900 dark:text-white break-all hover:underline block">
+                    {editorialEmail}
+                  </a>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    प्रेस विज्ञप्ति, सुधार और विज्ञापन पूछताछ
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-1">
+                <a 
+                  href={`mailto:${editorialEmail}`}
+                  className="inline-flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-zinc-800 hover:bg-zinc-900 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-white font-bold rounded-xl shadow-sm transition-all hover:shadow-md text-xs sm:text-sm"
+                >
+                  <Mail className="h-4 w-4" />
+                  <span>ईमेल भेजें ({editorialEmail})</span>
+                  <ExternalLink className="h-3.5 w-3.5 opacity-80 ml-1" />
+                </a>
+              </div>
             </div>
           </div>
 

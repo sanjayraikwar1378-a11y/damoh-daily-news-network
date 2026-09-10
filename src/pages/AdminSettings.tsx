@@ -566,8 +566,11 @@ export function AdminSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase text-zinc-500">Editorial Contact Email</label>
+              <label className="text-xs font-semibold uppercase text-zinc-500">Editorial Contact Email (Public)</label>
               <Input name="contactEmail" value={form.contactEmail} onChange={handleChange} placeholder="damohdailynewsnetwork@gmail.com" />
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                Official contact emails: <strong className="text-zinc-700 dark:text-zinc-300">contactddnn@gmail.com</strong>, <strong className="text-zinc-700 dark:text-zinc-300">damohdailynewsnetwork@gmail.com</strong>
+              </p>
             </div>
 
             <div className="space-y-2">

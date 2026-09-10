@@ -30,6 +30,7 @@ import { StickyLatestNewsWidget } from "@/components/StickyLatestNewsWidget"
 import { ArticleTextToSpeech } from "@/components/ArticleTextToSpeech"
 import { getReadingTime } from "@/lib/utils"
 import { formatArticleContentForDisplay } from "@/lib/sanitize"
+import { trackArticleView } from "@/lib/analytics"
 
 export function ArticleDetail() {
   const { slug } = useParams<{ slug: string }>()
@@ -177,11 +178,6 @@ export function ArticleDetail() {
   // Ref to prevent multiple view counts on re-renders for the same article ID
   const trackedArticleIdRef = useRef<string | null>(null)
 
-  // Scroll to top on route change
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior })
-  }, [slug])
-
   // Track views and history ONCE per article ID
   const articleId = article?.id
   useEffect(() => {
@@ -190,11 +186,14 @@ export function ArticleDetail() {
       try {
         incrementViews(articleId)
         addToHistory(articleId)
+        if (article) {
+          trackArticleView(articleId, article.title, article.categoryIds?.[0])
+        }
       } catch (err) {
         console.error("Error updating article metrics:", err)
       }
     }
-  }, [articleId])
+  }, [articleId, article])
 
   // Dynamic meta tags on client side for single page navigation
   useEffect(() => {
@@ -217,7 +216,25 @@ export function ArticleDetail() {
         : 'https://www.damohdailynewsnetwork.in'
       const canonicalUrl = `${canonicalOrigin}/article/${cleanSlug}`
       const desc = article.excerpt || article.title
-      const img = `${canonicalOrigin}/api/article-image/${encodeURIComponent(cleanSlug)}.jpg`
+
+      // Use the REAL article image if available, otherwise use dynamic endpoint for base64
+      let img = `${canonicalOrigin}/api/article-image/${encodeURIComponent(cleanSlug)}.jpg`
+      const rawImg = (article.imageUrl || (article as any).image || (article as any).featuredImage || '').trim()
+      if (rawImg && !rawImg.startsWith('data:')) {
+        if (rawImg.startsWith('http://') || rawImg.startsWith('https://')) {
+          if (rawImg.includes('res.cloudinary.com') && rawImg.includes('/upload/')) {
+            if (!rawImg.includes('/c_fill,w_1200,h_630')) {
+              img = rawImg.replace(/\/upload\/(?:c_[^\/]+\/)?/, '/upload/c_fill,w_1200,h_630,g_auto,q_auto:good,f_jpg/')
+            } else {
+              img = rawImg
+            }
+          } else {
+            img = rawImg
+          }
+        } else if (rawImg.startsWith('/')) {
+          img = `${canonicalOrigin}${rawImg}`
+        }
+      }
 
       const authorName = (article as any).authorName || reporter?.name || 'Damoh Daily News'
       updateMetaTag('name', 'description', desc)
@@ -657,65 +674,65 @@ export function ArticleDetail() {
           reporter={reporter} 
           authorNameFallback={(article as any).authorName || (article as any).reporterName} 
           variant="bio" 
-          className="my-8" 
+          className="my-5 sm:my-8" 
         />
 
         {/* Comments Section */}
         <LazySection minHeight="250px">
-          <div className="pt-10 border-t border-zinc-200 dark:border-zinc-800 space-y-6">
-            <h3 className="text-2xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-              <MessageCircle className="h-6 w-6 text-red-600" /> टिप्पणियां (Comments) ({articleComments.length})
+          <div className="pt-6 sm:pt-10 border-t border-zinc-200 dark:border-zinc-800 space-y-4 sm:space-y-6">
+            <h3 className="text-lg sm:text-2xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 sm:h-6 sm:w-6 text-red-600 shrink-0" /> टिप्पणियां (Comments) ({articleComments.length})
             </h3>
 
             {/* Comment Form */}
-            <form onSubmit={handleCommentSubmit} className="space-y-4 bg-zinc-50 dark:bg-zinc-900/50 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
-              <h4 className="font-bold text-sm text-zinc-900 dark:text-white">अपनी राय व्यक्त करें (Post a Comment)</h4>
+            <form onSubmit={handleCommentSubmit} className="space-y-3 sm:space-y-4 bg-zinc-50 dark:bg-zinc-900/50 p-3.5 sm:p-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
+              <h4 className="font-bold text-xs sm:text-sm text-zinc-900 dark:text-white">अपनी राय व्यक्त करें (Post a Comment)</h4>
               
               {commentSubmitted && (
-                <div className="p-3 bg-green-50 border border-green-200 text-green-700 text-sm rounded-md">
+                <div className="p-2.5 sm:p-3 bg-green-50 border border-green-200 text-green-700 text-xs sm:text-sm rounded-md">
                   आपकी टिप्पणी सबमिट कर दी गई है। समीक्षा के बाद प्रकाशित की जाएगी।
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
                 <input 
                   type="text" 
                   placeholder="आपका नाम (Your Name) *" 
                   required
                   value={commentName}
                   onChange={e => setCommentName(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
+                  className="w-full px-3 py-1.5 sm:py-2 text-xs sm:text-sm min-h-[38px] sm:min-h-[40px] border rounded-lg sm:rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
                 />
                 <input 
                   type="email" 
                   placeholder="ईमेल (Email Optional)" 
                   value={commentEmail}
                   onChange={e => setCommentEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
+                  className="w-full px-3 py-1.5 sm:py-2 text-xs sm:text-sm min-h-[38px] sm:min-h-[40px] border rounded-lg sm:rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
                 />
               </div>
               <textarea 
-                rows={3} 
+                rows={2} 
                 placeholder="आपकी टिप्पणी (Your Comment) *" 
                 required
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600"
+                className="w-full px-3 py-2 text-xs sm:text-sm border rounded-lg sm:rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-red-600 resize-y min-h-[64px] sm:min-h-[80px]"
               />
-              <Button type="submit" className="bg-red-600 hover:bg-red-700 text-white font-bold">
+              <Button type="submit" className="w-full sm:w-auto h-9 sm:h-10 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm rounded-lg sm:rounded-md">
                 टिप्पणी भेजें (Submit Comment)
               </Button>
             </form>
 
             {/* Existing Approved Comments */}
-            <div className="space-y-4">
+            <div className="space-y-2.5 sm:space-y-4">
               {articleComments.map(c => (
-                <div key={c.id} className="p-4 border border-zinc-200 dark:border-zinc-800 rounded-lg space-y-1">
+                <div key={c.id} className="p-3 sm:p-4 border border-zinc-200 dark:border-zinc-800 rounded-lg space-y-1">
                   <div className="flex justify-between items-center">
-                    <span className="font-bold text-sm text-zinc-900 dark:text-white">{c.userName}</span>
-                    <span className="text-xs text-zinc-400">{formatDateAgo(c.createdAt)}</span>
+                    <span className="font-bold text-xs sm:text-sm text-zinc-900 dark:text-white">{c.userName}</span>
+                    <span className="text-[11px] sm:text-xs text-zinc-400">{formatDateAgo(c.createdAt)}</span>
                   </div>
-                  <p className="text-sm text-zinc-700 dark:text-zinc-300">{c.content}</p>
+                  <p className="text-xs sm:text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">{c.content}</p>
                 </div>
               ))}
             </div>
@@ -725,7 +742,7 @@ export function ArticleDetail() {
         {/* Related News */}
         {relatedArticles.length > 0 && (
           <LazySection minHeight="250px">
-            <div className="pt-12 border-t border-zinc-200 dark:border-zinc-800">
+            <div className="pt-8 sm:pt-12 border-t border-zinc-200 dark:border-zinc-800">
               <h3 className="text-2xl font-bold mb-6 text-zinc-900 dark:text-white">
                 संबंधित खबरें (Related News)
               </h3>

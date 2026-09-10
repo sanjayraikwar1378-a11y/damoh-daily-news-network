@@ -658,7 +658,55 @@ async function buildAllLogoAssets() {
     }
   }
 
-  // 12. Copy all generated assets to dist folder if dist exists
+  // 12. 1200x630 Official Social Preview Image for Open Graph, WhatsApp & Twitter
+  try {
+    const renderedLogo = await sharp(logoBuffer, { density: 300 })
+      .resize(960, 206, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toBuffer();
+    const logoMeta = await sharp(renderedLogo).metadata();
+
+    const bgSvg = Buffer.from(`
+      <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="bgGrad" cx="50%" cy="45%" r="75%">
+            <stop offset="0%" stop-color="#1c1917" />
+            <stop offset="55%" stop-color="#09090b" />
+            <stop offset="100%" stop-color="#000000" />
+          </radialGradient>
+          <linearGradient id="topBorder" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#991b1b" />
+            <stop offset="30%" stop-color="#dc2626" />
+            <stop offset="70%" stop-color="#ef4444" />
+            <stop offset="100%" stop-color="#991b1b" />
+          </linearGradient>
+        </defs>
+        <rect width="1200" height="630" fill="url(#bgGrad)" />
+        <rect x="0" y="0" width="1200" height="6" fill="url(#topBorder)" />
+        <rect x="0" y="626" width="1200" height="4" fill="url(#topBorder)" />
+        <text x="600" y="475" text-anchor="middle" fill="#f1f5f9" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="24" font-weight="600" letter-spacing="0.5">दमोह एवं मध्य प्रदेश का प्रमुख डिजिटल न्यूज़ नेटवर्क</text>
+        <text x="600" y="525" text-anchor="middle" fill="#ef4444" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="3">WWW.DAMOHDAILYNEWSNETWORK.IN</text>
+      </svg>
+    `);
+    const bgBuffer = await sharp(bgSvg).png().toBuffer();
+    const finalSocialJpg = await sharp(bgBuffer)
+      .composite([
+        {
+          input: renderedLogo,
+          top: 175,
+          left: Math.round((1200 - (logoMeta.width || 960)) / 2)
+        }
+      ])
+      .jpeg({ quality: 92, mozjpeg: true })
+      .toBuffer();
+
+    fs.writeFileSync(path.join(publicDir, 'social-preview.jpg'), finalSocialJpg);
+    console.log('Created high-quality 1200x630 public/social-preview.jpg');
+  } catch (socialErr) {
+    console.error('Error generating social-preview.jpg:', socialErr);
+  }
+
+  // 13. Copy all generated assets to dist folder if dist exists
   const distDir = path.join(process.cwd(), 'dist');
   if (fs.existsSync(distDir)) {
     const filesToCopy = [
@@ -689,7 +737,8 @@ async function buildAllLogoAssets() {
       'favicon.png',
       'favicon-v2.png',
       'favicon.ico',
-      'favicon-v2.ico'
+      'favicon-v2.ico',
+      'social-preview.jpg'
     ];
     for (const f of filesToCopy) {
       const srcF = path.join(publicDir, f);

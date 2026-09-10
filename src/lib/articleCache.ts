@@ -170,7 +170,7 @@ const ARTICLES_LIST_STORAGE_KEY = 'damoh_cached_articles_v1';
 
 export function getStoredArticlesList(): Article[] {
   try {
-    // 1. Check if homepage SSR articles were provided in window or script tag
+    // 1. Check if SSR articles (homepage or category) were provided in window or script tag
     if (typeof window !== 'undefined') {
       const w = window as any;
       if (Array.isArray(w.__INITIAL_HOMEPAGE_ARTICLES__) && w.__INITIAL_HOMEPAGE_ARTICLES__.length > 0) {
@@ -183,6 +183,22 @@ export function getStoredArticlesList(): Article[] {
           const parsed = JSON.parse(scriptEl.textContent);
           if (Array.isArray(parsed) && parsed.length > 0) {
             w.__INITIAL_HOMEPAGE_ARTICLES__ = parsed;
+            parsed.forEach(saveArticleToCache);
+            return parsed;
+          }
+        } catch {}
+      }
+
+      if (Array.isArray(w.__INITIAL_CATEGORY_ARTICLES__) && w.__INITIAL_CATEGORY_ARTICLES__.length > 0) {
+        w.__INITIAL_CATEGORY_ARTICLES__.forEach(saveArticleToCache);
+        return w.__INITIAL_CATEGORY_ARTICLES__;
+      }
+      const catScriptEl = document.getElementById('__INITIAL_CATEGORY_ARTICLES__');
+      if (catScriptEl && catScriptEl.textContent) {
+        try {
+          const parsed = JSON.parse(catScriptEl.textContent);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            w.__INITIAL_CATEGORY_ARTICLES__ = parsed;
             parsed.forEach(saveArticleToCache);
             return parsed;
           }

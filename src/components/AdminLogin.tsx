@@ -114,7 +114,7 @@ export function AdminLogin({ initialError }: AdminLoginProps = {}) {
             src={siteSettings?.logoUrl} 
             alt={siteSettings?.siteName || "Damoh Daily News Network"} 
             priority={true}
-            className="h-[84px] sm:h-[104px] w-auto max-w-[340px] object-contain mb-1 drop-shadow-md" 
+            className="h-[90px] sm:h-[110px] w-auto max-w-[360px] object-contain mb-1 select-none" 
           />
           <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">
             Firebase Security &amp; CMS Admin Portal

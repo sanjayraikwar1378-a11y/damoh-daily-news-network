@@ -72,7 +72,7 @@ export function AuthorByline({
 
   if (variant === 'bio') {
     return (
-      <div className={`p-5 sm:p-6 rounded-2xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5 ${className}`}>
+      <div className={`p-3.5 sm:p-6 rounded-xl sm:rounded-2xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 shadow-sm flex flex-row items-center gap-3 sm:gap-5 ${className}`}>
         <img 
           src={optimizedAvatar} 
           alt={reporter.name} 
@@ -81,26 +81,26 @@ export function AuthorByline({
           loading="lazy"
           decoding="async"
           style={{ aspectRatio: '1/1' }}
-          className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-red-600 dark:border-red-500 shrink-0 bg-zinc-100 dark:bg-zinc-800 shadow-sm" 
+          className="w-14 h-14 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-red-600 dark:border-red-500 shrink-0 bg-zinc-100 dark:bg-zinc-800 shadow-sm" 
         />
-        <div className="space-y-1.5 flex-1 min-w-0">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h4 className="font-extrabold text-base sm:text-lg text-zinc-900 dark:text-white leading-snug">
+        <div className="space-y-1 sm:space-y-1.5 flex-1 min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+            <div className="min-w-0">
+              <h4 className="font-extrabold text-sm sm:text-lg text-zinc-900 dark:text-white leading-tight">
                 {reporter.name}
               </h4>
               {reporter.designation1 && (
-                <p className="text-xs font-bold text-red-600 dark:text-red-400 leading-tight">
+                <p className="text-[11px] sm:text-xs font-bold text-red-600 dark:text-red-400 leading-tight mt-0.5">
                   {reporter.designation1}
                 </p>
               )}
               {reporter.designation2 && (
-                <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 leading-tight">
+                <p className="text-[10px] sm:text-xs font-medium text-zinc-600 dark:text-zinc-400 leading-tight mt-0.5">
                   {reporter.designation2}
                 </p>
               )}
             </div>
-            <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-md bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50 inline-flex items-center gap-1">
+            <span className="text-[9px] sm:text-[10px] uppercase tracking-wider font-extrabold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/50 inline-flex items-center gap-1 shrink-0">
               <ShieldCheck className="h-3 w-3 text-red-600 dark:text-red-400" />
               Author Bio
             </span>

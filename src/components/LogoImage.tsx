@@ -16,21 +16,17 @@ export const LogoImage: React.FC<LogoImageProps> = ({
   alt = "Damoh Daily News Network",
   className = "",
   style = {},
-  width = 360,
-  height = 70,
+  width = 3887,
+  height = 833,
   priority = true,
   loading,
   decoding,
   ...props
 }) => {
-  // Determine clean initial source - prefer crisp SVG vector for infinite sharpness
+  // Determine clean initial source - always use approved raster asset, never broken/tilted logo.svg
   const getCleanSrc = (rawSrc?: string): string => {
-    if (!rawSrc || !rawSrc.trim()) return '/logo.svg';
+    if (!rawSrc || !rawSrc.trim() || rawSrc.trim() === '/logo.svg') return '/logo.png';
     const trimmed = rawSrc.trim();
-    // Prefer crisp vector SVG over raster assets to avoid scaling blur
-    if (trimmed === '/logo.png' || trimmed === '/logo.webp' || trimmed === 'logo.png' || trimmed === 'logo.webp') {
-      return '/logo.svg';
-    }
     if (trimmed.includes('res.cloudinary.com')) {
       return getOptimizedImageUrl(trimmed, { width: 800 });
     }
@@ -39,7 +35,7 @@ export const LogoImage: React.FC<LogoImageProps> = ({
 
   const initialSrc = getCleanSrc(src);
   const [currentSrc, setCurrentSrc] = useState<string>(initialSrc);
-  const [fallbackStage, setFallbackStage] = useState<number>(0); // 0 = /logo.svg (vector), 1 = /logo.webp (3887px), 2 = /logo.png (3887px)
+  const [fallbackStage, setFallbackStage] = useState<number>(0);
 
   // Synchronize when prop changes
   useEffect(() => {
@@ -48,12 +44,16 @@ export const LogoImage: React.FC<LogoImageProps> = ({
     setFallbackStage(0);
   }, [src]);
 
+  // Robust fallback chain: /logo.png -> /logo.webp -> /logo-sm.webp -> /logo.png (never fallback to distorted /logo.svg)
   const handleError = () => {
     if (fallbackStage === 0 && currentSrc !== '/logo.webp') {
       setFallbackStage(1);
       setCurrentSrc('/logo.webp');
-    } else if (fallbackStage <= 1 && currentSrc !== '/logo.png') {
+    } else if (fallbackStage <= 1 && currentSrc !== '/logo-sm.webp') {
       setFallbackStage(2);
+      setCurrentSrc('/logo-sm.webp');
+    } else if (fallbackStage <= 2 && currentSrc !== '/logo.png') {
+      setFallbackStage(3);
       setCurrentSrc('/logo.png');
     }
   };
@@ -74,8 +74,9 @@ export const LogoImage: React.FC<LogoImageProps> = ({
         objectFit: 'contain',
         objectPosition: 'left center',
         imageRendering: 'auto',
-        aspectRatio: '1166 / 250',
-        ...style
+        ...style,
+        // Enforce the master aspect ratio so external arbitrary ratios cannot squeeze or distort the logo
+        aspectRatio: style?.aspectRatio && style.aspectRatio !== '4 / 1' ? style.aspectRatio : '3887 / 833',
       }}
       className={`select-none ${className}`}
       {...props}

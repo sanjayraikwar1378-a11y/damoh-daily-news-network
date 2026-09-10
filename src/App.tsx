@@ -3,16 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { lazy, Suspense } from "react"
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
+import { lazy, Suspense, useEffect, useRef } from "react"
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { MainLayout } from "./components/layout/MainLayout"
 import { Home } from "./pages/Home"
-import { NewsProvider } from "./context/NewsContext"
+import { NewsProvider, useNews } from "./context/NewsContext"
 import { WeatherProvider } from "./context/WeatherContext"
 import { NotificationProvider } from "./context/NotificationContext"
 import { NotificationPromptCard } from "./components/NotificationPromptCard"
 import { ScrollToTop } from "./components/ScrollToTop"
+import { initGA4, trackPageView } from "./lib/analytics"
 
 // Lazy-loaded Admin Layout
 const AdminLayout = lazy(() => import("./components/layout/AdminLayout").then(m => ({ default: m.AdminLayout })))
@@ -46,7 +47,39 @@ const AdminComments = lazy(() => import("./pages/AdminComments").then(m => ({ de
 const AdminAds = lazy(() => import("./pages/AdminAds").then(m => ({ default: m.AdminAds })))
 const AdminSEO = lazy(() => import("./pages/AdminSEO").then(m => ({ default: m.AdminSEO })))
 const AdminSettings = lazy(() => import("./pages/AdminSettings").then(m => ({ default: m.AdminSettings })))
-const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics").then(m => ({ default: m.AdminAnalytics })))
+
+/**
+ * Headless Google Analytics 4 Route & Page View Tracker
+ * - Initializes GA4 once asynchronously (VITE_GA_MEASUREMENT_ID or siteSettings fallback)
+ * - Dispatches page_view on client-side route transitions without duplicate events
+ */
+function AnalyticsTracker() {
+  const location = useLocation()
+  const { siteSettings } = useNews()
+  const lastTrackedPathRef = useRef<string>("")
+
+  useEffect(() => {
+    initGA4(siteSettings?.googleAnalyticsId)
+  }, [siteSettings?.googleAnalyticsId])
+
+  useEffect(() => {
+    const currentPath = location.pathname + location.search
+    // Prevent duplicate page_view calls for the same route
+    if (lastTrackedPathRef.current === currentPath) {
+      return
+    }
+    lastTrackedPathRef.current = currentPath
+
+    // Small delay ensures dynamic article / page titles are updated in document.title
+    const timer = setTimeout(() => {
+      trackPageView(currentPath, document.title)
+    }, 120)
+
+    return () => clearTimeout(timer)
+  }, [location.pathname, location.search])
+
+  return null
+}
 
 function PageLoader() {
   return (
@@ -69,6 +102,7 @@ export default function App() {
           <NotificationProvider>
             <Router>
               <ScrollToTop />
+              <AnalyticsTracker />
               <NotificationPromptCard />
               <Suspense fallback={<PageLoader />}>
                 <Routes>
@@ -104,7 +138,6 @@ export default function App() {
                     <Route path="create" element={<AdminCreateNews />} />
                     <Route path="edit/:id" element={<AdminCreateNews />} />
                     <Route path="news" element={<AdminNews />} />
-                    <Route path="analytics" element={<AdminAnalytics />} />
                     <Route path="categories" element={<AdminCategories />} />
                     <Route path="reporters" element={<AdminReporters />} />
                     <Route path="media" element={<AdminMedia />} />

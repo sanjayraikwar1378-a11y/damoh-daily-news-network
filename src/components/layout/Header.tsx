@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { Search, Menu, Sun, Moon, MapPin, ChevronDown, Bookmark, X, Home as HomeIcon, Shield, Sparkles, ExternalLink, Flame, Newspaper, PhoneCall, Clock, Mail, MessageSquare, Phone, Building2 } from "lucide-react"
+import { Search, Menu, Sun, Moon, MapPin, ChevronDown, Bookmark, X, Home as HomeIcon, Shield, Sparkles, ExternalLink, Flame, Newspaper, PhoneCall, Clock, Mail, MessageSquare, Phone, Building2, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useNews } from "@/context/NewsContext"
@@ -308,6 +308,17 @@ export function Header() {
           </div>
 
           <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
+            <a 
+              href="https://chat.whatsapp.com/JDGzGkpuLHt4TtQ0u3V79C" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 transition-all font-bold text-xs" 
+              title="हमारे आधिकारिक WhatsApp ग्रुप से जुड़ें"
+            >
+              <MessageCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+              <span>WhatsApp ग्रुप</span>
+            </a>
+            <span className="text-zinc-700">|</span>
             <Link to="/bookmarks" className="flex items-center gap-1 hover:text-red-400 transition-colors font-medium text-xs">
               <Bookmark className="h-3.5 w-3.5 text-red-500" />
               <span>बुकमार्क ({bookmarks.length})</span>
@@ -326,9 +337,9 @@ export function Header() {
       </div>
       
       {/* Main Header Bar: [ Logo ] [ Category Navigation in same row ] [ Icons ] */}
-      <div className="container mx-auto px-2 sm:px-4 max-w-7xl h-14 sm:h-16 md:h-16 lg:h-[70px] flex items-center justify-between relative gap-1.5 sm:gap-2.5 lg:gap-3 w-full">
+      <div className="container mx-auto px-2 sm:px-4 max-w-7xl min-h-[68px] xs:min-h-[74px] sm:min-h-[102px] md:min-h-[110px] lg:min-h-[125px] xl:min-h-[132px] flex items-center justify-between relative gap-1.5 sm:gap-2.5 lg:gap-3 w-full py-0.5">
         {/* Left Section: Mobile Hamburger (< md) + Brand Logo */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0">
+        <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1 md:flex-initial md:shrink-0">
           {/* Hamburger Menu Toggle button for mobile (< md) */}
           <button 
             type="button"
@@ -342,15 +353,15 @@ export function Header() {
             <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
           </button>
 
-          {/* Full Responsive Brand Logo - restored to exact previous values from old project */}
-          <Link to="/" className="flex items-center group shrink min-w-0 py-0 relative z-10 hover:opacity-95 transition-opacity" aria-label="Damoh Daily News Network Home">
+          {/* Full Responsive Brand Logo - balanced mobile size and 20% enlarged desktop presence */}
+          <Link to="/" className="flex items-center group min-w-0 flex-1 md:flex-initial md:shrink-0 py-0 relative z-10 hover:opacity-95 transition-opacity" aria-label="Damoh Daily News Network Home">
             <LogoImage 
               src={siteSettings.logoUrl} 
               alt={siteSettings.siteName || "Damoh Daily News Network"} 
-              width={360}
-              height={70}
+              width={492}
+              height={106}
               priority={true}
-              className="h-[58px] xs:h-[63px] sm:h-[73px] md:h-[78px] lg:h-[88px] xl:h-[94px] w-auto max-w-[calc(100vw-150px)] sm:max-w-[416px] md:max-w-[470px] lg:max-w-[520px] xl:max-w-[570px] object-contain object-left" 
+              className="h-[68px] xs:h-[74px] sm:h-[102px] md:h-[110px] lg:h-[125px] xl:h-[132px] w-auto max-w-[calc(100vw-170px)] sm:max-w-[580px] md:max-w-[660px] lg:max-w-[730px] xl:max-w-[800px] object-contain object-left" 
             />
           </Link>
         </div>
@@ -559,10 +570,9 @@ export function Header() {
                   src={siteSettings.logoUrl} 
                   alt={siteSettings.siteName || "Damoh Daily News Network"} 
                   width={240}
-                  height={60}
+                  height={52}
                   priority={false}
-                  style={{ aspectRatio: '4 / 1' }}
-                  className="h-10 sm:h-12 w-auto max-w-[220px] object-contain" 
+                  className="h-[44px] sm:h-[50px] w-auto max-w-[235px] object-contain object-left" 
                 />
               </Link>
 
@@ -602,6 +612,23 @@ export function Header() {
                 <p className="text-[10px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-widest px-1 mb-1">
                   मुख्य नेविगेशन (Navigation)
                 </p>
+
+                {/* Official WhatsApp Group Option in Mobile Drawer */}
+                <a
+                  href="https://chat.whatsapp.com/JDGzGkpuLHt4TtQ0u3V79C"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors min-h-[44px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-500/30 mb-1.5"
+                  title="हमारे आधिकारिक WhatsApp ग्रुप से जुड़ें"
+                >
+                  <span className="flex items-center gap-3">
+                    <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>WhatsApp ग्रुप (Join Us)</span>
+                  </span>
+                  <span className="bg-emerald-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                    JOIN
+                  </span>
+                </a>
                 
                 <Link
                   to="/"
@@ -741,14 +768,19 @@ export function Header() {
                 </div>
 
                 <div className="p-3 bg-red-50/50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30 rounded-xl space-y-2 text-xs">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
-                      <Mail className="h-3.5 w-3.5 text-blue-500" />
-                      <span>ईमेल:</span>
-                    </span>
-                    <a href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} className="text-zinc-800 dark:text-zinc-200 font-medium truncate max-w-[180px] hover:underline">
-                      {siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}
-                    </a>
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400 font-semibold">
+                      <Mail className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                      <span>आधिकारिक ईमेल:</span>
+                    </div>
+                    <div className="flex flex-col gap-1 pl-5">
+                      <a href="mailto:contactddnn@gmail.com" className="text-zinc-800 dark:text-zinc-200 font-medium truncate hover:underline">
+                        contactddnn@gmail.com
+                      </a>
+                      <a href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} className="text-zinc-800 dark:text-zinc-200 font-medium truncate hover:underline">
+                        {siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}
+                      </a>
+                    </div>
                   </div>
                   <Link 
                     to="/contact" 

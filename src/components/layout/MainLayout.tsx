@@ -3,7 +3,7 @@ import { Header } from "./Header"
 import { useNews } from "@/context/NewsContext"
 import { LogoImage } from "@/components/LogoImage"
 import { LiveUpdatesWidget } from "@/components/LiveUpdatesWidget"
-import { Mail, MapPin, MessageSquare, Facebook, Twitter, Instagram, Youtube, Send } from "lucide-react"
+import { Mail, MapPin, MessageSquare, Facebook, Twitter, Instagram, Youtube, Send, MessageCircle } from "lucide-react"
 
 export function MainLayout() {
   const { categories, siteSettings } = useNews()
@@ -25,11 +25,10 @@ export function MainLayout() {
               <LogoImage 
                 src={siteSettings.logoUrl} 
                 alt={siteSettings.siteName || "Damoh Daily News Network"} 
-                width={326}
-                height={70}
+                width={3887}
+                height={833}
                 priority={false}
-                style={{ aspectRatio: '1166 / 250' }}
-                className="h-12 sm:h-14 md:h-16 w-auto max-w-[260px] sm:max-w-[310px] object-contain object-left select-none" 
+                className="h-[52px] sm:h-[60px] md:h-[68px] w-auto max-w-[275px] sm:max-w-[330px] max-w-full object-contain object-left select-none" 
               />
             </Link>
             <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed pt-1">
@@ -64,6 +63,20 @@ export function MainLayout() {
                 </a>
               )}
             </div>
+
+            {/* Official WhatsApp Group Card */}
+            <div className="pt-2">
+              <a 
+                href="https://chat.whatsapp.com/JDGzGkpuLHt4TtQ0u3V79C" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 text-xs font-bold transition-all group max-w-full" 
+                title="हमारे आधिकारिक WhatsApp ग्रुप से जुड़ें"
+              >
+                <MessageCircle className="h-4 w-4 text-emerald-400 group-hover:scale-110 transition-transform shrink-0" />
+                <span className="truncate">हमारे WhatsApp ग्रुप से जुड़ें &rarr;</span>
+              </a>
+            </div>
           </div>
 
           <div>
@@ -72,10 +85,19 @@ export function MainLayout() {
               <Link to="/contact" className="text-xs font-normal text-red-500 hover:underline">विस्तार देखें &rarr;</Link>
             </h4>
             <div className="text-xs sm:text-sm space-y-2.5 text-zinc-300">
-              <p className="flex items-center gap-2">
-                <Mail className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                <span>ईमेल: <a href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} className="hover:underline text-white font-medium">{siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}</a></span>
-              </p>
+              <div className="flex items-start gap-2">
+                <Mail className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-1" />
+                <div className="space-y-1">
+                  <div>
+                    <span className="text-zinc-400 text-xs">ईमेल 1: </span>
+                    <a href="mailto:contactddnn@gmail.com" className="hover:underline text-white font-medium">contactddnn@gmail.com</a>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 text-xs">ईमेल 2: </span>
+                    <a href={`mailto:${siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}`} className="hover:underline text-white font-medium">{siteSettings.contactEmail || "damohdailynewsnetwork@gmail.com"}</a>
+                  </div>
+                </div>
+              </div>
               <p className="flex items-start gap-2 pt-1 text-xs text-zinc-400">
                 <MapPin className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
                 <span>{siteSettings.contactAddress || "दमोह (मध्य प्रदेश) - 470661"}</span>
@@ -113,6 +135,18 @@ export function MainLayout() {
               <li><Link to="/about" className="hover:text-white transition-colors">About Us (हमारे बारे में)</Link></li>
               <li><Link to="/contact" className="hover:text-white transition-colors">Contact Us (संपर्क करें)</Link></li>
               <li><Link to="/bookmarks" className="hover:text-white transition-colors">Bookmarked Articles</Link></li>
+              <li>
+                <a 
+                  href="https://chat.whatsapp.com/JDGzGkpuLHt4TtQ0u3V79C" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="hover:text-emerald-400 text-emerald-400 font-medium transition-colors flex items-center gap-1.5"
+                  title="हमारे आधिकारिक WhatsApp ग्रुप से जुड़ें"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+                  <span>WhatsApp ग्रुप (Join Us)</span>
+                </a>
+              </li>
               <li><Link to="/admin" className="hover:text-red-400 transition-colors font-bold text-red-500">Admin CMS Dashboard</Link></li>
             </ul>
           </div>

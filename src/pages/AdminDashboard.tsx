@@ -1,4 +1,4 @@
-import { Users, FileText, Eye, TrendingUp, Zap, FolderTree, MessageSquare, Plus, Edit, ExternalLink, Image, DollarSign, Settings, BarChart3, Radio } from "lucide-react"
+import { Users, FileText, Eye, TrendingUp, Zap, FolderTree, MessageSquare, Plus, Edit, ExternalLink, Image, DollarSign, Settings, Radio } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { motion } from "motion/react"
 import { useNews } from "@/context/NewsContext"
@@ -53,12 +53,6 @@ export function AdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link to="/admin/analytics">
-            <Button variant="outline" className="border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 font-bold">
-              <BarChart3 className="h-4 w-4 mr-2" /> View Full Analytics
-            </Button>
-          </Link>
-
           <Link to="/admin/create">
             <Button className="bg-red-600 hover:bg-red-700 text-white font-bold">
               <Plus className="h-4 w-4 mr-2" /> Write New Article

@@ -3,7 +3,6 @@ import { Link, Outlet, useLocation } from "react-router-dom"
 import { 
   LayoutDashboard, 
   FileText, 
-  BarChart3,
   PlusCircle, 
   Settings, 
   Users, 
@@ -40,7 +39,7 @@ export function AdminLayout() {
   const [user, setUser] = useState<User | null | undefined>(undefined) // undefined = loading
   const [authError, setAuthError] = useState<string | null>(null)
 
-  const logoSrc = siteSettings?.logoUrl && siteSettings.logoUrl.trim() ? siteSettings.logoUrl : "/logo.svg"
+  const logoSrc = siteSettings?.logoUrl && siteSettings.logoUrl.trim() && siteSettings.logoUrl.trim() !== '/logo.svg' ? siteSettings.logoUrl : "/logo.png"
   const siteName = siteSettings?.siteName || "Damoh Daily News Network"
   
   useEffect(() => {
@@ -88,7 +87,6 @@ export function AdminLayout() {
     { label: "Live Updates", path: "/admin/live-updates", icon: Radio },
     { label: "Write News", path: "/admin/create", icon: PlusCircle },
     { label: "All News Articles", path: "/admin/news", icon: FileText },
-    { label: "Analytics & Traffic", path: "/admin/analytics", icon: BarChart3 },
     { label: "Categories", path: "/admin/categories", icon: FolderTree },
     { label: "Reporters & Roles", path: "/admin/reporters", icon: Users },
     { label: "Media Assets", path: "/admin/media", icon: Image },
@@ -143,23 +141,23 @@ export function AdminLayout() {
     <div className="min-h-screen bg-zinc-100 dark:bg-zinc-950 flex flex-col md:flex-row font-sans">
       
       {/* Mobile Top Header */}
-      <header className="md:hidden sticky top-0 z-40 bg-zinc-900 text-white p-3 border-b border-zinc-800 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-2">
+      <header className="md:hidden sticky top-0 z-40 bg-zinc-900 text-white px-3 py-2.5 border-b border-zinc-800 flex items-center justify-between shadow-md">
+        <div className="flex items-center gap-3 min-w-0 pl-1">
           <button 
             type="button" 
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="text-white hover:bg-zinc-800 h-11 w-11 flex items-center justify-center rounded-lg active:bg-zinc-700 transition-colors shrink-0"
+            className="text-white hover:bg-zinc-800 h-10 w-10 flex items-center justify-center rounded-lg active:bg-zinc-700 transition-colors shrink-0"
             aria-label="Toggle Admin Menu"
           >
-            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
 
-          <Link to="/admin" className="flex items-center py-1">
+          <Link to="/admin" className="flex items-center py-0.5 min-w-0 pl-1">
             <LogoImage 
               src={logoSrc} 
               alt={siteName} 
               priority={true}
-              className="h-[42px] w-auto max-w-[208px] object-contain" 
+              className="h-[42px] w-auto max-w-[195px] object-contain object-left" 
             />
           </Link>
         </div>
@@ -200,22 +198,22 @@ export function AdminLayout() {
               transition={{ type: "spring", damping: 25, stiffness: 260 }}
               className="relative w-[85%] max-w-xs bg-zinc-900 text-zinc-300 h-full flex flex-col z-50 shadow-2xl border-r border-zinc-800"
             >
-              <div className="p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
-                <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center">
+              <div className="p-3.5 border-b border-zinc-800 flex items-center justify-between shrink-0">
+                <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="flex items-center min-w-0 pl-1">
                   <LogoImage 
                     src={logoSrc} 
                     alt={siteName} 
                     priority={false}
-                    className="h-[42px] w-auto max-w-[195px] object-contain" 
+                    className="h-[42px] w-auto max-w-[190px] object-contain object-left" 
                   />
                 </Link>
                 <button 
                   type="button" 
                   onClick={() => setMobileMenuOpen(false)}
-                  className="text-zinc-400 hover:text-white h-11 w-11 flex items-center justify-center rounded-full active:bg-zinc-800 transition-colors"
+                  className="text-zinc-400 hover:text-white h-10 w-10 flex items-center justify-center rounded-full active:bg-zinc-800 transition-colors shrink-0"
                   aria-label="Close Admin Drawer"
                 >
-                  <X className="h-6 w-6" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
@@ -269,20 +267,22 @@ export function AdminLayout() {
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-zinc-900 text-zinc-300 flex-col shrink-0 min-h-screen sticky top-0 h-screen">
-        <div className="p-5 border-b border-zinc-800 space-y-3">
-          <Link to="/" className="flex flex-col items-center group">
-            <LogoImage 
-              src={logoSrc} 
-              alt={siteName} 
-              priority={true}
-              className="h-[62px] w-auto max-w-[260px] object-contain transition-transform group-hover:scale-[1.02]" 
-            />
-            <span className="text-[9px] font-bold text-zinc-400 tracking-wider uppercase mt-2 flex items-center gap-1">
+        <div className="px-4 py-4 border-b border-zinc-800 flex flex-col items-center justify-center text-center">
+          <Link to="/admin" className="flex flex-col items-center justify-center w-full group">
+            <div className="w-full flex items-center justify-center px-1">
+              <LogoImage 
+                src={logoSrc} 
+                alt={siteName} 
+                priority={true}
+                className="h-[52px] sm:h-[56px] w-auto max-w-[210px] mx-auto object-contain object-center transition-transform group-hover:scale-[1.02]" 
+              />
+            </div>
+            <span className="text-[9px] font-bold text-zinc-400 tracking-wider uppercase mt-2.5 flex items-center justify-center gap-1">
               <Shield className="h-3 w-3 text-emerald-500" /> FIREBASE CMS CONTROL
             </span>
           </Link>
 
-          <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-red-400 hover:text-red-300 transition-colors pt-2">
+          <Link to="/" className="inline-flex items-center justify-center gap-1.5 text-xs font-bold text-red-400 hover:text-red-300 transition-colors pt-3">
             <ArrowLeft className="h-3.5 w-3.5" /> View Live Website <ExternalLink className="h-3 w-3" />
           </Link>
         </div>
